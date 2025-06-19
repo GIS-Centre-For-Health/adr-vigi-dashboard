@@ -1,4 +1,4 @@
-# ADR Visualizations Project
+# ADR VIGI Excel Visualizations Project
 
 This project provides modular visualization tools for Adverse Drug Reaction (ADR) data from VigiFlow, including a comprehensive unified dashboard that combines all visualizations with global filtering capabilities.
 

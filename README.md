@@ -7,8 +7,7 @@ This project provides modular visualization tools for Adverse Drug Reaction (ADR
 ✅ **ALL 17 Visualizations Completed**: All required visualizations from WHO's 35 core ADR variables are implemented
 
 ✅ **Dashboard Refactoring Completed**: 
-- Original dashboard (`adr_dashboard.html`) - 2,800+ line monolithic file (legacy)
-- **Refactored dashboard (`adr_dashboard_refactored.html`) - PRODUCTION READY**
+- **Main dashboard (`adr_dashboard.html`) - Modular architecture, PRODUCTION READY**
 - All 17 visualizations extracted to modular format
 - Global filters extracted to `adr_filters.js` module
 - UI/UX issues resolved (card layouts, date parsing, responsive design)
@@ -23,8 +22,7 @@ This project provides modular visualization tools for Adverse Drug Reaction (ADR
 
 ```
 ADR_Visualizations/
-├── adr_dashboard.html                # Original monolithic dashboard (2,800+ lines)
-├── adr_dashboard_refactored.html     # Refactored modular dashboard
+├── adr_dashboard.html                # Main dashboard with modular architecture
 ├── assets/
 │   ├── css/
 │   │   └── common.css               # Common styles for all visualizations
@@ -144,8 +142,8 @@ Each visualization module follows this pattern:
 
 ## How to Use
 
-### Option 1: Unified Dashboard (RECOMMENDED - Use Refactored Version)
-1. Open `adr_dashboard_refactored.html` in a web browser
+### Option 1: Unified Dashboard (RECOMMENDED)
+1. Open `adr_dashboard.html` in a web browser
 2. Upload your VigiFlow Excel data file once
 3. Navigate through all visualizations using the sidebar
 4. Apply global filters that affect all visualizations

@@ -54,7 +54,7 @@ ADRCharts.seriousness = {
         const seriousnessCounts = {};
         
         data.forEach(row => {
-            const seriousness = this.cleanSeriousValue(row['Serious']);
+            const seriousness = this.cleanSeriousValue(row['Seriousness (IME)']);
             seriousnessCounts[seriousness] = (seriousnessCounts[seriousness] || 0) + 1;
         });
         

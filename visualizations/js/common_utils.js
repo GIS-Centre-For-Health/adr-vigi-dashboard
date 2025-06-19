@@ -7,6 +7,10 @@
 window.ADRCharts = window.ADRCharts || {};
 window.ADRCharts.utils = window.ADRCharts.utils || {};
 
+// Month names for display
+ADRCharts.utils.monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 
+                              'July', 'August', 'September', 'October', 'November', 'December'];
+
 // Date parsing utilities
 ADRCharts.utils.parseDate = function(dateStr) {
     if (!dateStr) return null;
@@ -22,6 +26,111 @@ ADRCharts.utils.parseDate = function(dateStr) {
     // Try standard date parsing
     const date = new Date(dateStr);
     return isNaN(date.getTime()) ? null : date;
+};
+
+// Parse Initial received date
+ADRCharts.utils.parseInitialReceivedDate = function(dateValue) {
+    if (!dateValue || dateValue === 'null' || dateValue === 'undefined') return null;
+    
+    // Handle Excel serial date (number)
+    if (typeof dateValue === 'number') {
+        // Excel serial date: days since 1900-01-01 (with leap year bug)
+        const excelEpoch = new Date(1899, 11, 30); // Excel's epoch (adjusted for leap year bug)
+        return new Date(excelEpoch.getTime() + dateValue * 24 * 60 * 60 * 1000);
+    }
+    // Handle DD-MMM-YY format (e.g., "15-Jan-22")
+    else if (typeof dateValue === 'string' && /^\d{1,2}-[A-Za-z]{3}-\d{2}$/.test(dateValue)) {
+        const parts = dateValue.split('-');
+        const day = parseInt(parts[0]);
+        const monthStr = parts[1];
+        const year = parseInt('20' + parts[2]); // Assuming 20xx for 2-digit years
+        
+        const months = {
+            'Jan': 0, 'Feb': 1, 'Mar': 2, 'Apr': 3, 'May': 4, 'Jun': 5,
+            'Jul': 6, 'Aug': 7, 'Sep': 8, 'Oct': 9, 'Nov': 10, 'Dec': 11
+        };
+        
+        const month = months[monthStr];
+        if (month !== undefined) {
+            return new Date(year, month, day);
+        }
+    }
+    // Handle YYYYMMDD format as number
+    else if (typeof dateValue === 'number' || /^\d{8}$/.test(dateValue.toString())) {
+        const dateStr = dateValue.toString();
+        const year = parseInt(dateStr.substring(0, 4));
+        const month = parseInt(dateStr.substring(4, 6));
+        const day = parseInt(dateStr.substring(6, 8));
+        
+        if (year >= 1900 && year <= 2030 && month >= 1 && month <= 12 && day >= 1 && day <= 31) {
+            return new Date(year, month - 1, day);
+        }
+    }
+    return null;
+};
+
+// Parse Onset date
+ADRCharts.utils.parseOnsetDate = function(dateValue) {
+    if (!dateValue || dateValue === 'null' || dateValue === 'undefined' || dateValue.trim() === '') return null;
+    
+    // Handle various date formats in the onset date field
+    
+    // Handle Excel serial date (number)
+    if (typeof dateValue === 'number') {
+        const excelEpoch = new Date(1899, 11, 30);
+        return new Date(excelEpoch.getTime() + dateValue * 24 * 60 * 60 * 1000);
+    }
+    
+    // Handle string dates
+    if (typeof dateValue === 'string') {
+        const trimmed = dateValue.trim();
+        
+        // Handle DD-MMM-YY format
+        if (/^\d{1,2}-[A-Za-z]{3}-\d{2}$/.test(trimmed)) {
+            const parts = trimmed.split('-');
+            const day = parseInt(parts[0]);
+            const monthStr = parts[1];
+            const year = parseInt('20' + parts[2]);
+            
+            const months = {
+                'Jan': 0, 'Feb': 1, 'Mar': 2, 'Apr': 3, 'May': 4, 'Jun': 5,
+                'Jul': 6, 'Aug': 7, 'Sep': 8, 'Oct': 9, 'Nov': 10, 'Dec': 11
+            };
+            
+            const month = months[monthStr];
+            if (month !== undefined) {
+                return new Date(year, month, day);
+            }
+        }
+        
+        // Handle YYYY-MM-DD or YYYY/MM/DD format
+        if (/^\d{4}[-\/]\d{1,2}[-\/]\d{1,2}/.test(trimmed)) {
+            const date = new Date(trimmed);
+            if (!isNaN(date.getTime())) {
+                return date;
+            }
+        }
+        
+        // Handle DD/MM/YYYY or DD-MM-YYYY format
+        if (/^\d{1,2}[-\/]\d{1,2}[-\/]\d{4}/.test(trimmed)) {
+            const parts = trimmed.split(/[-\/]/);
+            const day = parseInt(parts[0]);
+            const month = parseInt(parts[1]) - 1;
+            const year = parseInt(parts[2]);
+            
+            if (year >= 1900 && year <= 2030 && month >= 0 && month <= 11 && day >= 1 && day <= 31) {
+                return new Date(year, month, day);
+            }
+        }
+        
+        // Try standard date parsing as last resort
+        const date = new Date(trimmed);
+        if (!isNaN(date.getTime())) {
+            return date;
+        }
+    }
+    
+    return null;
 };
 
 // Drug name parsing

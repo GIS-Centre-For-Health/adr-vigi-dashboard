@@ -19,20 +19,34 @@ ADRFilters = {
             return null;
         }
         
+        // Handle Excel numeric dates (days since 1900-01-01)
+        if (typeof dateValue === 'number') {
+            // Excel dates start from 1900-01-01 (with leap year bug)
+            const excelEpoch = new Date(1899, 11, 30); // December 30, 1899
+            const msPerDay = 24 * 60 * 60 * 1000;
+            const date = new Date(excelEpoch.getTime() + dateValue * msPerDay);
+            
+            // Sanity check - date should be between 1900 and 2100
+            const year = date.getFullYear();
+            if (year >= 1900 && year <= 2100) {
+                return date;
+            }
+        }
+        
         // Try parsing as-is first
         let parsedDate = new Date(dateValue);
         
         // If invalid, try common date formats
         if (isNaN(parsedDate.getTime())) {
             // Try DD/MM/YYYY format
-            const ddmmyyyy = dateValue.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+            const ddmmyyyy = dateValue.toString().match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/);
             if (ddmmyyyy) {
                 parsedDate = new Date(ddmmyyyy[3], ddmmyyyy[2] - 1, ddmmyyyy[1]);
             }
             
             // Try MM/DD/YYYY format
             if (isNaN(parsedDate.getTime())) {
-                const mmddyyyy = dateValue.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+                const mmddyyyy = dateValue.toString().match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/);
                 if (mmddyyyy) {
                     parsedDate = new Date(mmddyyyy[3], mmddyyyy[1] - 1, mmddyyyy[2]);
                 }
@@ -40,14 +54,20 @@ ADRFilters = {
             
             // Try YYYY-MM-DD format
             if (isNaN(parsedDate.getTime())) {
-                const yyyymmdd = dateValue.match(/(\d{4})-(\d{1,2})-(\d{1,2})/);
+                const yyyymmdd = dateValue.toString().match(/(\d{4})-(\d{1,2})-(\d{1,2})/);
                 if (yyyymmdd) {
                     parsedDate = new Date(yyyymmdd[1], yyyymmdd[2] - 1, yyyymmdd[3]);
                 }
             }
         }
         
-        return !isNaN(parsedDate.getTime()) ? parsedDate : null;
+        // Sanity check for valid date range
+        const year = parsedDate.getFullYear();
+        if (!isNaN(parsedDate.getTime()) && year >= 1900 && year <= 2100) {
+            return parsedDate;
+        }
+        
+        return null;
     },
     
     /**
@@ -157,6 +177,38 @@ ADRFilters = {
     },
     
     /**
+     * Clean and standardize seriousness values
+     * @param {string} value - Raw seriousness value
+     * @returns {string} Standardized seriousness (Yes/No/Unknown)
+     */
+    cleanSeriousValue: function(value) {
+        if (!value || value === null || value === undefined) {
+            return 'Unknown';
+        }
+        
+        // Convert to string and clean
+        let cleaned = value.toString()
+            .replace(/_x000D_/g, '')
+            .replace(/\n/g, '')
+            .replace(/\r/g, '')
+            .trim();
+        
+        // Check if it's just whitespace or empty
+        if (cleaned === '' || cleaned === '_' || cleaned.length === 0) {
+            return 'Unknown';
+        }
+        
+        // Extract Yes or No from repeated values
+        if (cleaned.toLowerCase().includes('yes')) {
+            return 'Yes';
+        } else if (cleaned.toLowerCase().includes('no')) {
+            return 'No';
+        }
+        
+        return 'Unknown';
+    },
+    
+    /**
      * Apply global filters to dataset
      * @param {Array} data - Original data array
      * @param {Object} filters - Filter criteria object
@@ -220,6 +272,12 @@ ADRFilters = {
                 const rawOutcome = row['Outcome'];
                 const cleanedOutcome = this.cleanOutcomeValue(rawOutcome);
                 if (cleanedOutcome !== filters.outcome) return false;
+            }
+            
+            // Seriousness filter
+            if (filters.seriousness) {
+                const seriousness = this.cleanSeriousValue(row['Seriousness (IME)']);
+                if (seriousness !== filters.seriousness) return false;
             }
             
             return true;

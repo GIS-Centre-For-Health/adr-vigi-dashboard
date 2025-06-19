@@ -1,0 +1,875 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ADR Cases by Outcome - VigiFlow</title>
+    
+    <!-- External Libraries -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.17.0/xlsx.full.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    
+    <!-- Common Styles -->
+    <link rel="stylesheet" href="../assets/css/common.css">
+    
+    <!-- Page-specific styles -->
+    <style>
+        .outcome-legend {
+            margin-top: 1rem;
+            padding: 1rem;
+            background: #f8f9fa;
+            border-radius: 8px;
+        }
+        
+        .outcome-legend h4 {
+            margin-bottom: 0.5rem;
+            color: #2a5298;
+        }
+        
+        .outcome-category {
+            display: inline-block;
+            margin: 0.25rem 0.5rem;
+            padding: 0.25rem 0.75rem;
+            border-radius: 4px;
+            font-size: 0.9rem;
+            font-weight: 500;
+        }
+        
+        .view-toggle {
+            margin: 1rem 0;
+            text-align: center;
+        }
+        
+        .view-toggle button {
+            margin: 0 0.5rem;
+        }
+        
+        .active-view {
+            background-color: #2a5298;
+            color: white;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>ADR Cases by Outcome</h1>
+        <p>Distribution of Adverse Drug Reaction case outcomes from VigiFlow</p>
+    </div>
+    
+    <div class="container">
+        <!-- Upload Section -->
+        <div class="upload-section">
+            <h2>Upload ADR Data File</h2>
+            <p>Select an Excel file (.xlsx, .xls) containing ADR data from VigiFlow</p>
+            <div class="upload-area" id="upload-area">
+                <i class="fas fa-cloud-upload-alt" style="font-size: 3rem; color: #2a5298;"></i>
+                <p style="margin: 1rem 0;">Drag and drop your file here or click to browse</p>
+                <input type="file" id="file-input" accept=".xlsx,.xls">
+            </div>
+            <div id="file-info" style="margin-top: 1rem; display: none;">
+                <p>Selected file: <strong id="file-name"></strong></p>
+            </div>
+        </div>
+        
+        <!-- Loading -->
+        <div class="loading" id="loading">
+            <div class="spinner"></div>
+            <p>Processing your data...</p>
+        </div>
+        
+        <!-- Messages -->
+        <div class="message success" id="success-message"></div>
+        <div class="message error" id="error-message"></div>
+        
+        <!-- Filter Section -->
+        <div class="filter-section" id="filter-section">
+            <h2>Filter Data</h2>
+            <div class="filter-grid">
+                <div class="filter-group">
+                    <label for="year-filter">Year</label>
+                    <select id="year-filter">
+                        <option value="">All Years</option>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label for="date-from">Date From</label>
+                    <input type="date" id="date-from">
+                </div>
+                <div class="filter-group">
+                    <label for="date-to">Date To</label>
+                    <input type="date" id="date-to">
+                </div>
+            </div>
+            <div style="margin-top: 1rem;">
+                <button class="btn btn-primary" onclick="applyFilters()">Apply Filters</button>
+                <button class="btn btn-secondary" onclick="resetFilters()">Reset</button>
+            </div>
+        </div>
+        
+        <!-- Summary Statistics -->
+        <div class="summary-section" id="summary-section">
+            <h2>Summary Statistics</h2>
+            <div class="stats-grid" id="stats-grid">
+                <!-- Stats will be populated here -->
+            </div>
+        </div>
+        
+        <!-- View Toggle -->
+        <div class="visualization-section view-toggle" id="view-toggle-section" style="display: none;">
+            <button class="btn btn-primary active-view" id="pie-view-btn" onclick="showPieView()">
+                <i class="fas fa-chart-pie"></i> Pie Chart View
+            </button>
+            <button class="btn btn-secondary" id="bar-view-btn" onclick="showBarView()">
+                <i class="fas fa-chart-bar"></i> Bar Chart View
+            </button>
+        </div>
+        
+        <!-- Visualization Section -->
+        <div class="visualization-section" id="visualization-section">
+            <div class="chart-header">
+                <h2 class="chart-title">ADR Cases by Outcome</h2>
+                <div class="chart-actions">
+                    <button class="chart-btn" onclick="downloadChartImage()">
+                        <i class="fas fa-download"></i> Download
+                    </button>
+                    <button class="chart-btn" onclick="maximizeChart()">
+                        <i class="fas fa-expand"></i> Maximize
+                    </button>
+                </div>
+            </div>
+            <div class="chart-container" id="pie-chart-container" style="height: 500px; max-width: 700px; margin: 2rem auto;">
+                <canvas id="outcome-pie-chart"></canvas>
+            </div>
+            <div class="chart-container" id="bar-chart-container" style="height: 400px; display: none; margin: 2rem auto;">
+                <canvas id="outcome-bar-chart"></canvas>
+            </div>
+            
+            <!-- Outcome Legend/Info -->
+            <div class="outcome-legend">
+                <h4>Outcome Categories</h4>
+                <div>
+                    <span class="outcome-category" style="background: #27ae60; color: white;">Recovered</span>
+                    <span class="outcome-category" style="background: #52c41a; color: white;">Recovering</span>
+                    <span class="outcome-category" style="background: #f39c12; color: white;">Recovered with sequelae</span>
+                    <span class="outcome-category" style="background: #e74c3c; color: white;">Not recovered</span>
+                    <span class="outcome-category" style="background: #2c3e50; color: white;">Died</span>
+                    <span class="outcome-category" style="background: #95a5a6; color: white;">Unknown</span>
+                </div>
+            </div>
+            
+            <!-- Data Table -->
+            <div class="data-table-section" style="margin-top: 2rem;">
+                <h3>Outcome Distribution</h3>
+                <table class="data-table" id="outcome-table">
+                    <thead>
+                        <tr>
+                            <th>Outcome</th>
+                            <th>Count</th>
+                            <th>Percentage</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <!-- Table rows will be populated here -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        
+        <!-- Export Section -->
+        <div class="visualization-section" id="export-section" style="display: none;">
+            <h2>Export Options</h2>
+            <div style="text-align: center; padding: 2rem;">
+                <button class="btn btn-primary" onclick="exportToPDF()">
+                    <i class="fas fa-file-pdf"></i> Export as PDF
+                </button>
+                <button class="btn btn-primary" onclick="exportToCSV()">
+                    <i class="fas fa-file-csv"></i> Export Data as CSV
+                </button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Common JavaScript -->
+    <script src="../assets/js/common.js"></script>
+    
+    <!-- Page-specific JavaScript -->
+    <script>
+        let outcomePieChart = null;
+        let outcomeBarChart = null;
+        let currentView = 'pie';
+        const dateField = '_parsedDate';
+        
+        // Define colors for outcome categories
+        const outcomeColors = {
+            'Recovered': {
+                background: 'rgba(39, 174, 96, 0.8)',  // Green - best outcome
+                border: 'rgba(39, 174, 96, 1)'
+            },
+            'Recovering': {
+                background: 'rgba(82, 196, 26, 0.8)',  // Light green - positive trajectory
+                border: 'rgba(82, 196, 26, 1)'
+            },
+            'Recovered with sequelae': {
+                background: 'rgba(243, 156, 18, 0.8)',  // Orange - partial recovery
+                border: 'rgba(243, 156, 18, 1)'
+            },
+            'Not recovered': {
+                background: 'rgba(231, 76, 60, 0.8)',  // Red - poor outcome
+                border: 'rgba(231, 76, 60, 1)'
+            },
+            'Died': {
+                background: 'rgba(44, 62, 80, 0.8)',  // Dark gray/black - worst outcome
+                border: 'rgba(44, 62, 80, 1)'
+            },
+            'Unknown': {
+                background: 'rgba(149, 165, 166, 0.8)',  // Light gray - no data
+                border: 'rgba(149, 165, 166, 1)'
+            }
+        };
+        
+        // Order for display
+        const outcomeOrder = ['Recovered', 'Recovering', 'Recovered with sequelae', 'Not recovered', 'Died', 'Unknown'];
+        
+        // Clean outcome value
+        function cleanOutcomeValue(value) {
+            if (!value || value === null || value === undefined) {
+                return 'Unknown';
+            }
+            
+            // Convert to string and clean
+            let cleaned = value.toString()
+                .replace(/_x000D_/g, ' ')
+                .replace(/\r/g, ' ')
+                .replace(/\n/g, ' ')
+                .trim();
+            
+            // Check if it's just whitespace or empty
+            if (cleaned === '' || cleaned === '_' || cleaned.length === 0) {
+                return 'Unknown';
+            }
+            
+            // Normalize to lowercase for matching
+            const normalizedValue = cleaned.toLowerCase();
+            
+            // Handle repeated values (e.g., "Unknown Unknown Unknown")
+            // First, check for duplicated words
+            const words = normalizedValue.split(/\s+/);
+            const uniqueWords = [...new Set(words)];
+            
+            // If all words are the same (e.g., "unknown unknown unknown"), use just one
+            if (uniqueWords.length === 1 && words.length > 1) {
+                const singleWord = uniqueWords[0];
+                
+                // Map common single words to standard outcomes
+                if (singleWord === 'unknown' || singleWord === 'unkown') {
+                    return 'Unknown';
+                } else if (singleWord === 'fatal' || singleWord === 'died' || singleWord === 'death') {
+                    return 'Died';
+                } else if (singleWord === 'recovered' || singleWord === 'resolved') {
+                    return 'Recovered';
+                } else if (singleWord === 'recovering' || singleWord === 'resolving') {
+                    return 'Recovering';
+                }
+            }
+            
+            // Handle variations with slashes (e.g., "Recovering / Resolving")
+            if (normalizedValue.includes('/')) {
+                // Check for common patterns
+                if (normalizedValue.includes('recovering') || normalizedValue.includes('resolving')) {
+                    return 'Recovering';
+                } else if (normalizedValue.includes('recovered') || normalizedValue.includes('resolved')) {
+                    // Check if it includes sequelae
+                    if (normalizedValue.includes('sequelae')) {
+                        return 'Recovered with sequelae';
+                    }
+                    return 'Recovered';
+                }
+            }
+            
+            // Handle specific outcome patterns
+            if (normalizedValue.includes('unknown') || normalizedValue.includes('unkown')) {
+                return 'Unknown';
+            } else if (normalizedValue.includes('fatal') || normalizedValue.includes('died') || normalizedValue.includes('death')) {
+                return 'Died';
+            } else if ((normalizedValue.includes('recovered') || normalizedValue.includes('resolved')) && normalizedValue.includes('sequelae')) {
+                return 'Recovered with sequelae';
+            } else if (normalizedValue.includes('recovered') || normalizedValue.includes('resolved')) {
+                return 'Recovered';
+            } else if (normalizedValue.includes('recovering') || normalizedValue.includes('resolving')) {
+                return 'Recovering';
+            } else if (normalizedValue.includes('not recovered') || normalizedValue.includes('not resolved')) {
+                return 'Not recovered';
+            }
+            
+            // If no match found, check if it's a misspelling or variation
+            // Common misspellings
+            if (normalizedValue === 'unkown' || normalizedValue === 'unknow' || normalizedValue === 'unknwon') {
+                return 'Unknown';
+            }
+            
+            // If still no match, return Unknown for unrecognized values
+            console.warn(`Unrecognized outcome value: "${cleaned}"`);
+            return 'Unknown';
+        }
+        
+        // Process data specific to this visualization
+        function processData(data) {
+            originalData = data;
+            filteredData = data;
+            
+            // Parse dates for filtering (using Initial received date)
+            originalData.forEach(row => {
+                if (row['Initial received date']) {
+                    row._parsedDate = parseInitialReceivedDate(row['Initial received date']);
+                }
+            });
+            
+            hideLoading();
+            showSuccess(`Successfully loaded ${data.length} ADR records`);
+            
+            // Show sections
+            document.getElementById('filter-section').style.display = 'block';
+            document.getElementById('summary-section').style.display = 'block';
+            document.getElementById('visualization-section').style.display = 'block';
+            document.getElementById('export-section').style.display = 'block';
+            document.getElementById('view-toggle-section').style.display = 'block';
+            
+            // Populate filters
+            populateYearFilter(originalData, dateField);
+            
+            // Generate visualizations
+            generateVisualization();
+            updateSummaryStats();
+        }
+        
+        // Apply filters
+        function applyFilters() {
+            filteredData = applyDateFilters(originalData, dateField);
+            generateVisualization();
+            updateSummaryStats();
+            showSuccess(`Filters applied. Showing ${filteredData.length} records.`);
+        }
+        
+        // Reset filters
+        function resetFilters() {
+            document.getElementById('year-filter').value = '';
+            document.getElementById('date-from').value = '';
+            document.getElementById('date-to').value = '';
+            
+            filteredData = originalData;
+            generateVisualization();
+            updateSummaryStats();
+            showSuccess('Filters reset.');
+        }
+        
+        // Generate visualization
+        function generateVisualization() {
+            // Count outcome categories
+            const outcomeCounts = {};
+            
+            // Initialize all categories
+            outcomeOrder.forEach(outcome => {
+                outcomeCounts[outcome] = 0;
+            });
+            
+            filteredData.forEach(row => {
+                const outcome = cleanOutcomeValue(row['Outcome']);
+                if (outcomeCounts.hasOwnProperty(outcome)) {
+                    outcomeCounts[outcome]++;
+                } else {
+                    // If we encounter an unexpected outcome, add it
+                    outcomeCounts[outcome] = 1;
+                }
+            });
+            
+            // Update both charts
+            generatePieChart(outcomeCounts);
+            generateBarChart(outcomeCounts);
+            updateDataTable(outcomeCounts);
+        }
+        
+        // Generate pie chart
+        function generatePieChart(outcomeCounts) {
+            const total = Object.values(outcomeCounts).reduce((a, b) => a + b, 0);
+            
+            // Prepare data - filter out zero counts for pie chart
+            const labels = [];
+            const data = [];
+            const backgroundColors = [];
+            const borderColors = [];
+            
+            outcomeOrder.forEach(outcome => {
+                if (outcomeCounts[outcome] > 0) {
+                    labels.push(outcome);
+                    data.push(outcomeCounts[outcome]);
+                    backgroundColors.push(outcomeColors[outcome]?.background || 'rgba(189, 195, 199, 0.8)');
+                    borderColors.push(outcomeColors[outcome]?.border || 'rgba(189, 195, 199, 1)');
+                }
+            });
+            
+            // Add any unexpected outcomes
+            Object.keys(outcomeCounts).forEach(outcome => {
+                if (!outcomeOrder.includes(outcome) && outcomeCounts[outcome] > 0) {
+                    labels.push(outcome);
+                    data.push(outcomeCounts[outcome]);
+                    backgroundColors.push('rgba(189, 195, 199, 0.8)');
+                    borderColors.push('rgba(189, 195, 199, 1)');
+                }
+            });
+            
+            // Chart configuration
+            const config = {
+                type: 'pie',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        data: data,
+                        backgroundColor: backgroundColors,
+                        borderColor: borderColors,
+                        borderWidth: 2,
+                        hoverOffset: 10
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        title: {
+                            display: true,
+                            text: `Total ADR Cases: ${total.toLocaleString()}`,
+                            font: {
+                                size: 16,
+                                weight: 'normal'
+                            },
+                            padding: 20
+                        },
+                        legend: {
+                            position: 'bottom',
+                            labels: {
+                                padding: 15,
+                                font: {
+                                    size: 12
+                                },
+                                generateLabels: function(chart) {
+                                    const data = chart.data;
+                                    if (data.labels.length && data.datasets.length) {
+                                        return data.labels.map((label, i) => {
+                                            const dataset = data.datasets[0];
+                                            const value = dataset.data[i];
+                                            const percentage = ((value / total) * 100).toFixed(1);
+                                            return {
+                                                text: `${label} (${value})`,
+                                                fillStyle: dataset.backgroundColor[i],
+                                                strokeStyle: dataset.borderColor[i],
+                                                lineWidth: dataset.borderWidth,
+                                                hidden: false,
+                                                index: i
+                                            };
+                                        });
+                                    }
+                                    return [];
+                                }
+                            }
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    const label = context.label;
+                                    const value = context.raw;
+                                    const percentage = ((value / total) * 100).toFixed(1);
+                                    return [
+                                        `${label}: ${value.toLocaleString()}`,
+                                        `Percentage: ${percentage}%`
+                                    ];
+                                }
+                            },
+                            backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                            padding: 12
+                        }
+                    }
+                }
+            };
+            
+            // Destroy existing chart if any
+            if (outcomePieChart) {
+                outcomePieChart.destroy();
+            }
+            
+            // Create new chart
+            const ctx = document.getElementById('outcome-pie-chart').getContext('2d');
+            outcomePieChart = new Chart(ctx, config);
+        }
+        
+        // Generate bar chart
+        function generateBarChart(outcomeCounts) {
+            const total = Object.values(outcomeCounts).reduce((a, b) => a + b, 0);
+            
+            // Prepare data - include all outcomes for bar chart
+            const labels = [];
+            const data = [];
+            const backgroundColors = [];
+            const borderColors = [];
+            
+            outcomeOrder.forEach(outcome => {
+                labels.push(outcome);
+                data.push(outcomeCounts[outcome]);
+                backgroundColors.push(outcomeColors[outcome]?.background || 'rgba(189, 195, 199, 0.8)');
+                borderColors.push(outcomeColors[outcome]?.border || 'rgba(189, 195, 199, 1)');
+            });
+            
+            // Add any unexpected outcomes
+            Object.keys(outcomeCounts).forEach(outcome => {
+                if (!outcomeOrder.includes(outcome)) {
+                    labels.push(outcome);
+                    data.push(outcomeCounts[outcome]);
+                    backgroundColors.push('rgba(189, 195, 199, 0.8)');
+                    borderColors.push('rgba(189, 195, 199, 1)');
+                }
+            });
+            
+            // Chart configuration
+            const config = {
+                type: 'bar',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        data: data,
+                        backgroundColor: backgroundColors,
+                        borderColor: borderColors,
+                        borderWidth: 2
+                    }]
+                },
+                options: {
+                    indexAxis: 'y', // Horizontal bars
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        title: {
+                            display: true,
+                            text: `Total ADR Cases: ${total.toLocaleString()}`,
+                            font: {
+                                size: 16,
+                                weight: 'normal'
+                            },
+                            padding: 20
+                        },
+                        legend: {
+                            display: false
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    const value = context.raw;
+                                    const percentage = ((value / total) * 100).toFixed(1);
+                                    return [
+                                        `Cases: ${value.toLocaleString()}`,
+                                        `Percentage: ${percentage}%`
+                                    ];
+                                }
+                            },
+                            backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                            padding: 12
+                        }
+                    },
+                    scales: {
+                        x: {
+                            beginAtZero: true,
+                            title: {
+                                display: true,
+                                text: 'Number of Cases'
+                            },
+                            ticks: {
+                                precision: 0
+                            }
+                        },
+                        y: {
+                            ticks: {
+                                autoSkip: false
+                            }
+                        }
+                    }
+                }
+            };
+            
+            // Destroy existing chart if any
+            if (outcomeBarChart) {
+                outcomeBarChart.destroy();
+            }
+            
+            // Create new chart
+            const ctx = document.getElementById('outcome-bar-chart').getContext('2d');
+            outcomeBarChart = new Chart(ctx, config);
+        }
+        
+        // Update data table
+        function updateDataTable(outcomeCounts) {
+            const tbody = document.querySelector('#outcome-table tbody');
+            tbody.innerHTML = '';
+            
+            const total = Object.values(outcomeCounts).reduce((a, b) => a + b, 0);
+            
+            // Display in order
+            outcomeOrder.forEach(outcome => {
+                if (outcomeCounts[outcome] !== undefined) {
+                    const count = outcomeCounts[outcome];
+                    const percentage = total > 0 ? ((count / total) * 100).toFixed(1) : '0.0';
+                    const row = document.createElement('tr');
+                    row.innerHTML = `
+                        <td>${outcome}</td>
+                        <td style="text-align: right;">${count.toLocaleString()}</td>
+                        <td style="text-align: right;">${percentage}%</td>
+                    `;
+                    tbody.appendChild(row);
+                }
+            });
+            
+            // Add any unexpected outcomes
+            Object.keys(outcomeCounts).forEach(outcome => {
+                if (!outcomeOrder.includes(outcome)) {
+                    const count = outcomeCounts[outcome];
+                    const percentage = total > 0 ? ((count / total) * 100).toFixed(1) : '0.0';
+                    const row = document.createElement('tr');
+                    row.innerHTML = `
+                        <td>${outcome}</td>
+                        <td style="text-align: right;">${count.toLocaleString()}</td>
+                        <td style="text-align: right;">${percentage}%</td>
+                    `;
+                    tbody.appendChild(row);
+                }
+            });
+            
+            // Add total row
+            const totalRow = document.createElement('tr');
+            totalRow.style.fontWeight = 'bold';
+            totalRow.style.borderTop = '2px solid #ddd';
+            totalRow.innerHTML = `
+                <td>Total</td>
+                <td style="text-align: right;">${total.toLocaleString()}</td>
+                <td style="text-align: right;">100.0%</td>
+            `;
+            tbody.appendChild(totalRow);
+        }
+        
+        // Update summary statistics
+        function updateSummaryStats() {
+            const statsGrid = document.getElementById('stats-grid');
+            statsGrid.innerHTML = '';
+            
+            // Total cases
+            addStatCard(statsGrid, 'Total ADR Cases', filteredData.length);
+            
+            // Count each outcome category
+            const outcomeCounts = {};
+            outcomeOrder.forEach(outcome => {
+                outcomeCounts[outcome] = 0;
+            });
+            
+            filteredData.forEach(row => {
+                const outcome = cleanOutcomeValue(row['Outcome']);
+                if (outcomeCounts.hasOwnProperty(outcome)) {
+                    outcomeCounts[outcome]++;
+                } else {
+                    outcomeCounts[outcome] = 1;
+                }
+            });
+            
+            // Calculate grouped statistics
+            const positiveOutcomes = (outcomeCounts['Recovered'] || 0) + (outcomeCounts['Recovering'] || 0);
+            const positivePercentage = filteredData.length > 0 ? ((positiveOutcomes / filteredData.length) * 100).toFixed(1) : '0.0';
+            addStatCard(statsGrid, 'Positive Outcomes', `${positiveOutcomes} (${positivePercentage}%)`);
+            
+            const partialRecovery = outcomeCounts['Recovered with sequelae'] || 0;
+            const partialPercentage = filteredData.length > 0 ? ((partialRecovery / filteredData.length) * 100).toFixed(1) : '0.0';
+            addStatCard(statsGrid, 'Partial Recovery', `${partialRecovery} (${partialPercentage}%)`);
+            
+            const negativeOutcomes = (outcomeCounts['Not recovered'] || 0) + (outcomeCounts['Died'] || 0);
+            const negativePercentage = filteredData.length > 0 ? ((negativeOutcomes / filteredData.length) * 100).toFixed(1) : '0.0';
+            addStatCard(statsGrid, 'Negative Outcomes', `${negativeOutcomes} (${negativePercentage}%)`);
+            
+            // Recovery rate (excluding unknown)
+            const knownOutcomes = filteredData.length - (outcomeCounts['Unknown'] || 0);
+            const recoveryRate = knownOutcomes > 0 ? 
+                (((outcomeCounts['Recovered'] || 0) / knownOutcomes) * 100).toFixed(1) : '0.0';
+            addStatCard(statsGrid, 'Recovery Rate (Known)', `${recoveryRate}%`);
+            
+            // Mortality rate
+            const mortalityRate = filteredData.length > 0 ? 
+                (((outcomeCounts['Died'] || 0) / filteredData.length) * 100).toFixed(1) : '0.0';
+            addStatCard(statsGrid, 'Mortality Rate', `${mortalityRate}%`);
+        }
+        
+        // View switching functions
+        function showPieView() {
+            currentView = 'pie';
+            document.getElementById('pie-view-btn').className = 'btn btn-primary active-view';
+            document.getElementById('bar-view-btn').className = 'btn btn-secondary';
+            document.getElementById('pie-chart-container').style.display = 'block';
+            document.getElementById('bar-chart-container').style.display = 'none';
+        }
+        
+        function showBarView() {
+            currentView = 'bar';
+            document.getElementById('pie-view-btn').className = 'btn btn-secondary';
+            document.getElementById('bar-view-btn').className = 'btn btn-primary active-view';
+            document.getElementById('pie-chart-container').style.display = 'none';
+            document.getElementById('bar-chart-container').style.display = 'block';
+        }
+        
+        // Page-specific export functions
+        function downloadChartImage() {
+            const chart = currentView === 'pie' ? outcomePieChart : outcomeBarChart;
+            downloadChart(chart, 'adr_outcome_distribution.png');
+        }
+        
+        function maximizeChart() {
+            const chart = currentView === 'pie' ? outcomePieChart : outcomeBarChart;
+            createMaximizeModal(chart, 'ADR Cases by Outcome');
+        }
+        
+        function exportToCSV() {
+            // Count outcome categories
+            const outcomeCounts = {};
+            outcomeOrder.forEach(outcome => {
+                outcomeCounts[outcome] = 0;
+            });
+            
+            filteredData.forEach(row => {
+                const outcome = cleanOutcomeValue(row['Outcome']);
+                if (outcomeCounts.hasOwnProperty(outcome)) {
+                    outcomeCounts[outcome]++;
+                } else {
+                    outcomeCounts[outcome] = 1;
+                }
+            });
+            
+            const total = Object.values(outcomeCounts).reduce((a, b) => a + b, 0);
+            
+            // Create CSV content
+            let csvContent = 'Outcome,Count,Percentage\n';
+            
+            // Add outcomes in order
+            outcomeOrder.forEach(outcome => {
+                if (outcomeCounts[outcome] !== undefined) {
+                    const count = outcomeCounts[outcome];
+                    const percentage = total > 0 ? ((count / total) * 100).toFixed(1) : '0.0';
+                    csvContent += `"${outcome}",${count},${percentage}%\n`;
+                }
+            });
+            
+            // Add any unexpected outcomes
+            Object.keys(outcomeCounts).forEach(outcome => {
+                if (!outcomeOrder.includes(outcome)) {
+                    const count = outcomeCounts[outcome];
+                    const percentage = total > 0 ? ((count / total) * 100).toFixed(1) : '0.0';
+                    csvContent += `"${outcome}",${count},${percentage}%\n`;
+                }
+            });
+            
+            // Add summary
+            csvContent += '\nSummary\n';
+            csvContent += `Total Cases,${total}\n`;
+            
+            const positiveOutcomes = (outcomeCounts['Recovered'] || 0) + (outcomeCounts['Recovering'] || 0);
+            csvContent += `Positive Outcomes,${positiveOutcomes}\n`;
+            
+            const negativeOutcomes = (outcomeCounts['Not recovered'] || 0) + (outcomeCounts['Died'] || 0);
+            csvContent += `Negative Outcomes,${negativeOutcomes}\n`;
+            
+            // Create and download file
+            const blob = new Blob([csvContent], { type: 'text/csv' });
+            const url = window.URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = 'adr_outcome_distribution_data.csv';
+            link.click();
+            
+            window.URL.revokeObjectURL(url);
+            showSuccess('CSV exported successfully!');
+        }
+        
+        function exportToPDF() {
+            showLoading();
+            
+            const { jsPDF } = window.jspdf;
+            const pdf = new jsPDF();
+            
+            // Add title
+            pdf.setFontSize(20);
+            pdf.text('ADR Cases by Outcome Analysis', 20, 20);
+            
+            // Add date
+            pdf.setFontSize(12);
+            pdf.text(`Generated on: ${new Date().toLocaleDateString()}`, 20, 30);
+            
+            // Add summary stats
+            pdf.setFontSize(14);
+            pdf.text('Summary Statistics:', 20, 45);
+            
+            pdf.setFontSize(11);
+            pdf.text(`Total ADR Cases: ${filteredData.length}`, 30, 55);
+            
+            // Count outcomes for the report
+            const outcomeCounts = {};
+            outcomeOrder.forEach(outcome => {
+                outcomeCounts[outcome] = 0;
+            });
+            
+            filteredData.forEach(row => {
+                const outcome = cleanOutcomeValue(row['Outcome']);
+                if (outcomeCounts.hasOwnProperty(outcome)) {
+                    outcomeCounts[outcome]++;
+                } else {
+                    outcomeCounts[outcome] = 1;
+                }
+            });
+            
+            const total = Object.values(outcomeCounts).reduce((a, b) => a + b, 0);
+            
+            // Add grouped statistics
+            const positiveOutcomes = (outcomeCounts['Recovered'] || 0) + (outcomeCounts['Recovering'] || 0);
+            const negativeOutcomes = (outcomeCounts['Not recovered'] || 0) + (outcomeCounts['Died'] || 0);
+            
+            pdf.text(`Positive Outcomes: ${positiveOutcomes} (${((positiveOutcomes / total) * 100).toFixed(1)}%)`, 30, 65);
+            pdf.text(`Negative Outcomes: ${negativeOutcomes} (${((negativeOutcomes / total) * 100).toFixed(1)}%)`, 30, 75);
+            
+            // Add outcome breakdown
+            let yPos = 90;
+            pdf.text('Outcome Breakdown:', 30, yPos);
+            
+            outcomeOrder.forEach(outcome => {
+                if (outcomeCounts[outcome] !== undefined) {
+                    yPos += 10;
+                    const count = outcomeCounts[outcome];
+                    const percentage = total > 0 ? ((count / total) * 100).toFixed(1) : '0.0';
+                    pdf.text(`${outcome}: ${count} (${percentage}%)`, 40, yPos);
+                }
+            });
+            
+            // Add any unexpected outcomes
+            Object.keys(outcomeCounts).forEach(outcome => {
+                if (!outcomeOrder.includes(outcome)) {
+                    yPos += 10;
+                    const count = outcomeCounts[outcome];
+                    const percentage = total > 0 ? ((count / total) * 100).toFixed(1) : '0.0';
+                    pdf.text(`${outcome}: ${count} (${percentage}%)`, 40, yPos);
+                }
+            });
+            
+            // Add chart
+            const chart = currentView === 'pie' ? outcomePieChart : outcomeBarChart;
+            if (chart) {
+                const chartImage = chart.toBase64Image();
+                pdf.addImage(chartImage, 'PNG', 20, yPos + 20, 170, 120);
+            }
+            
+            // Save PDF
+            pdf.save('adr_outcome_analysis.pdf');
+            
+            hideLoading();
+            showSuccess('PDF exported successfully!');
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,979 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ADR Dashboard - Refactored</title>
+    
+    <!-- External CSS -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <link rel="stylesheet" href="assets/css/common.css">
+    
+    <!-- Dashboard Specific CSS -->
+    <style>
+        /* Dashboard Layout */
+        .dashboard-container {
+            display: flex;
+            min-height: calc(100vh - 80px);
+            background-color: #f5f7fa;
+        }
+        
+        /* Sidebar Navigation */
+        .sidebar {
+            width: 280px;
+            background: white;
+            box-shadow: 2px 0 4px rgba(0,0,0,0.1);
+            overflow-y: auto;
+        }
+        
+        .sidebar-header {
+            padding: 20px;
+            background: #2c3e50;
+            color: white;
+        }
+        
+        .nav-category {
+            border-bottom: 1px solid #e9ecef;
+        }
+        
+        .nav-category-header {
+            padding: 15px 20px;
+            background: #f8f9fa;
+            cursor: pointer;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-weight: 600;
+            color: #495057;
+        }
+        
+        .nav-category-header:hover {
+            background: #e9ecef;
+        }
+        
+        .nav-items {
+            display: none;
+            background: white;
+        }
+        
+        .nav-category.active .nav-items {
+            display: block;
+        }
+        
+        .nav-item {
+            padding: 12px 20px 12px 40px;
+            cursor: pointer;
+            color: #6c757d;
+            transition: all 0.3s ease;
+            border-left: 3px solid transparent;
+        }
+        
+        .nav-item:hover {
+            background: #f8f9fa;
+            color: #3498db;
+            border-left-color: #3498db;
+        }
+        
+        .nav-item.active {
+            background: #e3f2fd;
+            color: #2196f3;
+            border-left-color: #2196f3;
+            font-weight: 500;
+        }
+        
+        /* Main Content Area */
+        .main-content {
+            flex: 1;
+            padding: 30px;
+            overflow-y: auto;
+        }
+        
+        /* Global Filters */
+        .global-filters {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin-bottom: 30px;
+        }
+        
+        .filter-content {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 15px;
+            align-items: end;
+        }
+        
+        /* Visualization Content */
+        .visualization-content {
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        
+        .visualization-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 25px;
+            padding-bottom: 15px;
+            border-bottom: 2px solid #e9ecef;
+        }
+        
+        .chart-container {
+            position: relative;
+            height: 400px;
+            margin: 20px 0;
+        }
+        
+        /* Loading Indicator */
+        .loading-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(255, 255, 255, 0.9);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 9999;
+        }
+        
+        .loading-content {
+            text-align: center;
+        }
+        
+        .spinner {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #3498db;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 20px;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>ADR Dashboard - Refactored Version</h1>
+        <p>Unified view of adverse drug reaction data with modular visualizations</p>
+    </div>
+    
+    <div class="dashboard-container">
+        <!-- Sidebar Navigation -->
+        <nav class="sidebar">
+            <div class="sidebar-header">
+                <h3><i class="fas fa-chart-line"></i> Visualizations</h3>
+            </div>
+            
+            <div class="nav-category active">
+                <div class="nav-category-header" onclick="toggleCategory(this)">
+                    <span>Overview</span>
+                    <i class="fas fa-chevron-right"></i>
+                </div>
+                <div class="nav-items">
+                    <div class="nav-item active" data-view="overview" onclick="loadView('overview')">
+                        <i class="fas fa-dashboard"></i> Dashboard Overview
+                    </div>
+                </div>
+            </div>
+            
+            <div class="nav-category">
+                <div class="nav-category-header" onclick="toggleCategory(this)">
+                    <span>Demographics</span>
+                    <i class="fas fa-chevron-right"></i>
+                </div>
+                <div class="nav-items">
+                    <div class="nav-item" data-view="sex" onclick="loadView('sex')">
+                        <i class="fas fa-venus-mars"></i> Sex Distribution
+                    </div>
+                    <div class="nav-item" data-view="age" onclick="loadView('age')">
+                        <i class="fas fa-users"></i> Age Groups
+                    </div>
+                    <div class="nav-item" data-view="pregnancy" onclick="loadView('pregnancy')">
+                        <i class="fas fa-baby"></i> Pregnancy Status
+                    </div>
+                    <div class="nav-item" data-view="lactation" onclick="loadView('lactation')">
+                        <i class="fas fa-baby-carriage"></i> Lactation Status
+                    </div>
+                </div>
+            </div>
+            
+            <div class="nav-category">
+                <div class="nav-category-header" onclick="toggleCategory(this)">
+                    <span>Report Characteristics</span>
+                    <i class="fas fa-chevron-right"></i>
+                </div>
+                <div class="nav-items">
+                    <div class="nav-item" data-view="reportTypes" onclick="loadView('reportTypes')">
+                        <i class="fas fa-file-alt"></i> Report Types
+                    </div>
+                    <div class="nav-item" data-view="seriousness" onclick="loadView('seriousness')">
+                        <i class="fas fa-exclamation-triangle"></i> Seriousness
+                    </div>
+                    <div class="nav-item" data-view="outcome" onclick="loadView('outcome')">
+                        <i class="fas fa-heart-pulse"></i> Outcomes
+                    </div>
+                </div>
+            </div>
+        </nav>
+        
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- Upload Section -->
+            <div class="upload-section" id="upload-section">
+                <div class="upload-area" id="upload-area">
+                    <i class="fas fa-cloud-upload-alt"></i>
+                    <p>Drag and drop an Excel file here or click to browse</p>
+                    <input type="file" id="file-input" accept=".xlsx,.xls" style="display: none;">
+                </div>
+            </div>
+            
+            <!-- Global Filters -->
+            <div class="global-filters" id="global-filters" style="display: none;">
+                <h3>Global Filters</h3>
+                <div class="filter-content">
+                    <div class="filter-group">
+                        <label for="date-from">Start Date</label>
+                        <input type="date" id="date-from">
+                    </div>
+                    <div class="filter-group">
+                        <label for="date-to">End Date</label>
+                        <input type="date" id="date-to">
+                    </div>
+                    <div class="filter-group">
+                        <label for="location-filter">Location</label>
+                        <select id="location-filter">
+                            <option value="">All Locations</option>
+                        </select>
+                    </div>
+                    <div class="filter-group">
+                        <label for="drug-filter">Drug Name</label>
+                        <select id="drug-filter">
+                            <option value="">All Drugs</option>
+                        </select>
+                    </div>
+                    <div class="filter-group">
+                        <label for="outcome-filter">Outcome</label>
+                        <select id="outcome-filter">
+                            <option value="">All Outcomes</option>
+                        </select>
+                    </div>
+                    <div class="filter-group">
+                        <button class="btn btn-primary" onclick="applyGlobalFilters()">Apply Filters</button>
+                        <button class="btn btn-secondary" onclick="resetGlobalFilters()">Reset</button>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Dynamic Content Area -->
+            <div id="content"></div>
+        </main>
+    </div>
+    
+    <!-- Loading Overlay -->
+    <div class="loading-overlay" id="loading" style="display: none;">
+        <div class="loading-content">
+            <div class="spinner"></div>
+            <p>Loading...</p>
+        </div>
+    </div>
+    
+    <!-- External Libraries -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.17.0/xlsx.full.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    
+    <!-- Common Utilities -->
+    <script src="visualizations/js/common_utils.js"></script>
+    
+    <!-- Filter Module -->
+    <script src="visualizations/js/adr_filters.js"></script>
+    
+    <!-- Visualization Modules -->
+    <script src="visualizations/js/adr_sex_chart.js"></script>
+    <script src="visualizations/js/adr_age_group_chart.js"></script>
+    <script src="visualizations/js/adr_report_types_chart.js"></script>
+    <script src="visualizations/js/adr_seriousness_chart.js"></script>
+    <script src="visualizations/js/adr_outcome_chart.js"></script>
+    <script src="visualizations/js/adr_pregnancy_chart.js"></script>
+    <script src="visualizations/js/adr_lactation_chart.js"></script>
+    <!-- Add more visualization modules here as they are created -->
+    
+    <!-- Dashboard JavaScript -->
+    <script>
+        // Global variables
+        let originalData = [];
+        let filteredData = [];
+        let currentView = 'overview';
+        let currentActiveChartDestroyer = null;
+        
+        // Initialize dashboard
+        document.addEventListener('DOMContentLoaded', function() {
+            setupFileUpload();
+        });
+        
+        // File upload setup
+        function setupFileUpload() {
+            const uploadArea = document.getElementById('upload-area');
+            const fileInput = document.getElementById('file-input');
+            
+            uploadArea.addEventListener('click', () => fileInput.click());
+            fileInput.addEventListener('change', handleFileSelect);
+            
+            // Drag and drop
+            uploadArea.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                uploadArea.classList.add('drag-over');
+            });
+            
+            uploadArea.addEventListener('dragleave', () => {
+                uploadArea.classList.remove('drag-over');
+            });
+            
+            uploadArea.addEventListener('drop', (e) => {
+                e.preventDefault();
+                uploadArea.classList.remove('drag-over');
+                const files = e.dataTransfer.files;
+                if (files.length > 0) {
+                    handleFile(files[0]);
+                }
+            });
+        }
+        
+        // Handle file selection
+        function handleFileSelect(e) {
+            const file = e.target.files[0];
+            if (file) {
+                handleFile(file);
+            }
+        }
+        
+        // Handle file processing
+        function handleFile(file) {
+            showLoading();
+            
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const data = new Uint8Array(e.target.result);
+                    const workbook = XLSX.read(data, { type: 'array' });
+                    const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+                    const jsonData = XLSX.utils.sheet_to_json(firstSheet, { header: 1 });
+                    
+                    // Convert to objects
+                    const headers = jsonData[0];
+                    const rows = jsonData.slice(1).map(row => {
+                        const obj = {};
+                        headers.forEach((header, index) => {
+                            obj[header] = row[index];
+                        });
+                        return obj;
+                    });
+                    
+                    // Parse dates for each row
+                    rows.forEach(row => {
+                        if (row['Initial received date']) {
+                            row._parsedDate = ADRFilters.parseInitialReceivedDate(row['Initial received date']);
+                        }
+                    });
+                    
+                    // Store data
+                    originalData = rows;
+                    filteredData = rows;
+                    
+                    // Populate filter dropdowns with counts
+                    populateFilterDropdowns();
+                    
+                    // Hide upload section and show filters
+                    document.getElementById('upload-section').style.display = 'none';
+                    document.getElementById('global-filters').style.display = 'block';
+                    
+                    // Load default view
+                    loadView('overview');
+                    
+                    hideLoading();
+                    showSuccess(`Loaded ${rows.length} records successfully`);
+                } catch (error) {
+                    hideLoading();
+                    showError('Error processing file: ' + error.message);
+                }
+            };
+            
+            reader.readAsArrayBuffer(file);
+        }
+        
+        // Toggle category in sidebar
+        function toggleCategory(header) {
+            const category = header.parentElement;
+            category.classList.toggle('active');
+        }
+        
+        // Load view
+        function loadView(view) {
+            // Clean up previous chart if any
+            if (currentActiveChartDestroyer) {
+                currentActiveChartDestroyer();
+                currentActiveChartDestroyer = null;
+            }
+            
+            // Update active nav item
+            document.querySelectorAll('.nav-item').forEach(item => {
+                item.classList.remove('active');
+            });
+            document.querySelector(`[data-view="${view}"]`).classList.add('active');
+            
+            // Update current view
+            currentView = view;
+            
+            // Clear content
+            const content = document.getElementById('content');
+            content.innerHTML = '';
+            
+            // Load appropriate view
+            switch(view) {
+                case 'overview':
+                    showOverview();
+                    break;
+                case 'sex':
+                    showSexAnalysis();
+                    break;
+                case 'age':
+                    showAgeAnalysis();
+                    break;
+                case 'reportTypes':
+                    showReportTypesAnalysis();
+                    break;
+                case 'seriousness':
+                    showSeriousnessAnalysis();
+                    break;
+                case 'outcome':
+                    showOutcomeAnalysis();
+                    break;
+                case 'pregnancy':
+                    showPregnancyAnalysis();
+                    break;
+                case 'lactation':
+                    showLactationAnalysis();
+                    break;
+                // Add more cases as modules are created
+                default:
+                    content.innerHTML = '<p>View not implemented yet</p>';
+            }
+        }
+        
+        // Show overview
+        function showOverview() {
+            const content = document.getElementById('content');
+            content.innerHTML = `
+                <div class="visualization-content">
+                    <div class="visualization-header">
+                        <h2>Dashboard Overview</h2>
+                    </div>
+                    <div class="summary-cards">
+                        <div class="stat-card">
+                            <div class="stat-icon"><i class="fas fa-file-medical"></i></div>
+                            <div class="stat-content">
+                                <div class="stat-value">${filteredData.length.toLocaleString()}</div>
+                                <div class="stat-label">Total ADR Reports</div>
+                            </div>
+                        </div>
+                    </div>
+                    <p>Select a visualization from the sidebar to begin analysis.</p>
+                </div>
+            `;
+        }
+        
+        // Show sex analysis using the module
+        function showSexAnalysis() {
+            const content = document.getElementById('content');
+            content.innerHTML = `
+                <div class="visualization-content">
+                    <div class="visualization-header">
+                        <h2>Sex Distribution Analysis</h2>
+                        <div class="visualization-actions">
+                            <button class="btn btn-secondary" onclick="exportSexData()">
+                                <i class="fas fa-download"></i> Export Data
+                            </button>
+                            <button class="btn btn-secondary" onclick="downloadSexChart()">
+                                <i class="fas fa-image"></i> Save Chart
+                            </button>
+                        </div>
+                    </div>
+                    <div class="chart-container">
+                        <canvas id="sexChart"></canvas>
+                    </div>
+                    <div id="sex-stats"></div>
+                </div>
+            `;
+            
+            // Create chart using the module
+            ADRCharts.sex.createChart('sexChart', filteredData);
+            
+            // Set destroyer for cleanup
+            currentActiveChartDestroyer = ADRCharts.sex.destroy.bind(ADRCharts.sex);
+            
+            // Display statistics
+            const processed = ADRCharts.sex.processData(filteredData);
+            const statsHTML = `
+                <h3>Distribution Statistics</h3>
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Sex</th>
+                            <th>Count</th>
+                            <th>Percentage</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${processed.data.map(item => `
+                            <tr>
+                                <td>${item.sex}</td>
+                                <td>${item.count.toLocaleString()}</td>
+                                <td>${item.percentage}%</td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                    <tfoot>
+                        <tr>
+                            <th>Total</th>
+                            <th>${processed.total.toLocaleString()}</th>
+                            <th>100.0%</th>
+                        </tr>
+                    </tfoot>
+                </table>
+            `;
+            document.getElementById('sex-stats').innerHTML = statsHTML;
+        }
+        
+        // Show age analysis using the module
+        function showAgeAnalysis() {
+            const content = document.getElementById('content');
+            content.innerHTML = `
+                <div class="visualization-content">
+                    <div class="visualization-header">
+                        <h2>Age Group Analysis</h2>
+                        <div class="visualization-actions">
+                            <button class="btn btn-secondary" onclick="exportAgeData()">
+                                <i class="fas fa-download"></i> Export Data
+                            </button>
+                            <button class="btn btn-secondary" onclick="downloadAgeChart()">
+                                <i class="fas fa-image"></i> Save Chart
+                            </button>
+                        </div>
+                    </div>
+                    <div id="age-summary"></div>
+                    <div class="chart-container" id="ageChart"></div>
+                    <div id="age-table" style="margin-top: 2rem;"></div>
+                </div>
+            `;
+            
+            // Create chart using the module
+            ADRCharts.ageGroup.createChart('ageChart', filteredData, {
+                summaryContainerId: 'age-summary',
+                tableContainerId: 'age-table'
+            });
+            
+            // Set destroyer for cleanup
+            currentActiveChartDestroyer = ADRCharts.ageGroup.destroy.bind(ADRCharts.ageGroup);
+        }
+        
+        // Show report types analysis using the module
+        function showReportTypesAnalysis() {
+            const content = document.getElementById('content');
+            content.innerHTML = `
+                <div class="visualization-content">
+                    <div class="visualization-header">
+                        <h2>Report Types Analysis</h2>
+                        <div class="visualization-actions">
+                            <button class="btn btn-secondary" onclick="exportReportTypesData()">
+                                <i class="fas fa-download"></i> Export Data
+                            </button>
+                            <button class="btn btn-secondary" onclick="downloadReportTypesChart()">
+                                <i class="fas fa-image"></i> Save Chart
+                            </button>
+                        </div>
+                    </div>
+                    <div id="reportTypes-summary"></div>
+                    <div class="chart-container" id="reportTypesChart"></div>
+                    <div id="reportTypes-table" style="margin-top: 2rem;"></div>
+                </div>
+            `;
+            
+            // Create chart using the module
+            ADRCharts.reportTypes.createChart('reportTypesChart', filteredData, {
+                summaryContainerId: 'reportTypes-summary',
+                tableContainerId: 'reportTypes-table'
+            });
+            
+            // Set destroyer for cleanup
+            currentActiveChartDestroyer = ADRCharts.reportTypes.destroy.bind(ADRCharts.reportTypes);
+        }
+        
+        // Show seriousness analysis using the module
+        function showSeriousnessAnalysis() {
+            const content = document.getElementById('content');
+            content.innerHTML = `
+                <div class="visualization-content">
+                    <div class="visualization-header">
+                        <h2>Seriousness Analysis</h2>
+                        <div class="visualization-actions">
+                            <button class="btn btn-secondary" onclick="exportSeriousnessData()">
+                                <i class="fas fa-download"></i> Export Data
+                            </button>
+                            <button class="btn btn-secondary" onclick="downloadSeriousnessChart()">
+                                <i class="fas fa-image"></i> Save Chart
+                            </button>
+                        </div>
+                    </div>
+                    <div id="seriousness-summary"></div>
+                    <div class="chart-container" id="seriousnessChart"></div>
+                    <div id="seriousness-table" style="margin-top: 2rem;"></div>
+                </div>
+            `;
+            
+            // Create chart using the module
+            ADRCharts.seriousness.createChart('seriousnessChart', filteredData, {
+                summaryContainerId: 'seriousness-summary',
+                tableContainerId: 'seriousness-table'
+            });
+            
+            // Set destroyer for cleanup
+            currentActiveChartDestroyer = ADRCharts.seriousness.destroy.bind(ADRCharts.seriousness);
+        }
+        
+        // Show outcome analysis using the module
+        function showOutcomeAnalysis() {
+            const content = document.getElementById('content');
+            content.innerHTML = `
+                <div class="visualization-content">
+                    <div class="visualization-header">
+                        <h2>Outcome Analysis</h2>
+                        <div class="visualization-actions">
+                            <button class="btn btn-secondary" onclick="switchOutcomeView('pie')">
+                                <i class="fas fa-chart-pie"></i> Pie Chart
+                            </button>
+                            <button class="btn btn-secondary" onclick="switchOutcomeView('bar')">
+                                <i class="fas fa-chart-bar"></i> Bar Chart
+                            </button>
+                            <button class="btn btn-secondary" onclick="exportOutcomeData()">
+                                <i class="fas fa-download"></i> Export Data
+                            </button>
+                            <button class="btn btn-secondary" onclick="downloadOutcomeChart()">
+                                <i class="fas fa-image"></i> Save Chart
+                            </button>
+                        </div>
+                    </div>
+                    <div id="outcome-summary"></div>
+                    <div class="chart-container" id="outcomeChart"></div>
+                    <div id="outcome-table" style="margin-top: 2rem;"></div>
+                </div>
+            `;
+            
+            // Create chart using the module
+            ADRCharts.outcome.createChart('outcomeChart', filteredData, {
+                summaryContainerId: 'outcome-summary',
+                tableContainerId: 'outcome-table'
+            });
+            
+            // Set destroyer for cleanup
+            currentActiveChartDestroyer = ADRCharts.outcome.destroy.bind(ADRCharts.outcome);
+        }
+        
+        // Populate filter dropdowns with counts
+        function populateFilterDropdowns() {
+            const counts = ADRFilters.calculateFilterCounts(originalData);
+            
+            // Populate dropdowns using ADRFilters utility
+            ADRFilters.populateFilterDropdowns(counts, {
+                location: document.getElementById('location-filter'),
+                drug: document.getElementById('drug-filter'),
+                outcome: document.getElementById('outcome-filter'),
+                startDate: document.getElementById('date-from'),
+                endDate: document.getElementById('date-to')
+            });
+        }
+        
+        // Apply global filters
+        function applyGlobalFilters() {
+            const filters = {
+                startDate: document.getElementById('date-from').value,
+                endDate: document.getElementById('date-to').value,
+                location: document.getElementById('location-filter').value,
+                drug: document.getElementById('drug-filter').value,
+                outcome: document.getElementById('outcome-filter').value
+            };
+            
+            // Use ADRFilters module to apply filters
+            filteredData = ADRFilters.applyGlobalFilters(originalData, filters);
+            
+            // Reload current view with filtered data
+            loadView(currentView);
+            showSuccess(`Filters applied. Showing ${filteredData.length} of ${originalData.length} records.`);
+        }
+        
+        // Reset filters
+        function resetGlobalFilters() {
+            document.getElementById('date-from').value = '';
+            document.getElementById('date-to').value = '';
+            document.getElementById('location-filter').value = '';
+            document.getElementById('drug-filter').value = '';
+            document.getElementById('outcome-filter').value = '';
+            
+            filteredData = [...originalData];
+            
+            // Re-populate dropdowns with full data counts
+            populateFilterDropdowns();
+            
+            loadView(currentView);
+            showSuccess('Filters reset.');
+        }
+        
+        // Export functions
+        function exportSexData() {
+            ADRCharts.sex.exportData(filteredData, 'adr_sex_distribution.csv');
+        }
+        
+        function downloadSexChart() {
+            const chart = ADRCharts.sex.getChartInstance();
+            if (chart) {
+                ADRCharts.utils.downloadChartAsImage(chart, 'adr_sex_distribution.png');
+            }
+        }
+        
+        function exportAgeData() {
+            const processed = ADRCharts.ageGroup.processData(filteredData);
+            let csvContent = 'Age Group,Count,Percentage\n';
+            
+            // Add age groups
+            Object.keys(ADRCharts.ageGroup.ageGroups).forEach(group => {
+                if (processed.ageGroupCounts[group] > 0) {
+                    const percentage = ((processed.ageGroupCounts[group] / processed.total) * 100).toFixed(1);
+                    csvContent += `"${group}",${processed.ageGroupCounts[group]},${percentage}%\n`;
+                }
+            });
+            
+            // Add Unknown if present
+            if (processed.ageGroupCounts['Unknown'] > 0) {
+                const percentage = ((processed.ageGroupCounts['Unknown'] / processed.total) * 100).toFixed(1);
+                csvContent += `"Unknown",${processed.ageGroupCounts['Unknown']},${percentage}%\n`;
+            }
+            
+            // Add total
+            csvContent += `\nTotal,${processed.total},100.0%\n`;
+            
+            // Download
+            const blob = new Blob([csvContent], { type: 'text/csv' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'adr_age_groups.csv';
+            a.click();
+            URL.revokeObjectURL(url);
+            showSuccess('Age data exported successfully!');
+        }
+        
+        function downloadAgeChart() {
+            if (ADRCharts.ageGroup._chartInstance) {
+                const canvas = ADRCharts.ageGroup._chartInstance.canvas;
+                const url = canvas.toDataURL('image/png');
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'adr_age_groups.png';
+                a.click();
+                showSuccess('Chart image downloaded successfully!');
+            }
+        }
+        
+        function exportReportTypesData() {
+            ADRCharts.reportTypes.exportData(filteredData, 'adr_report_types.csv');
+            showSuccess('Report types data exported successfully!');
+        }
+        
+        function downloadReportTypesChart() {
+            if (ADRCharts.reportTypes._chartInstance) {
+                const canvas = ADRCharts.reportTypes._chartInstance.canvas;
+                const url = canvas.toDataURL('image/png');
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'adr_report_types.png';
+                a.click();
+                showSuccess('Chart image downloaded successfully!');
+            }
+        }
+        
+        function exportSeriousnessData() {
+            ADRCharts.seriousness.exportData(filteredData, 'adr_seriousness_distribution.csv');
+            showSuccess('Seriousness data exported successfully!');
+        }
+        
+        function downloadSeriousnessChart() {
+            if (ADRCharts.seriousness._chartInstance) {
+                const canvas = ADRCharts.seriousness._chartInstance.canvas;
+                const url = canvas.toDataURL('image/png');
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'adr_seriousness_distribution.png';
+                a.click();
+                showSuccess('Chart image downloaded successfully!');
+            }
+        }
+        
+        function exportOutcomeData() {
+            ADRCharts.outcome.exportData(filteredData, 'adr_outcome_distribution.csv');
+            showSuccess('Outcome data exported successfully!');
+        }
+        
+        function downloadOutcomeChart() {
+            if (ADRCharts.outcome._chartInstance) {
+                const canvas = ADRCharts.outcome._chartInstance.canvas;
+                const url = canvas.toDataURL('image/png');
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'adr_outcome_distribution.png';
+                a.click();
+                showSuccess('Chart image downloaded successfully!');
+            }
+        }
+        
+        function switchOutcomeView(type) {
+            ADRCharts.outcome.switchChartType(type);
+            ADRCharts.outcome.createChart('outcomeChart', filteredData, {
+                chartType: type,
+                summaryContainerId: 'outcome-summary',
+                tableContainerId: 'outcome-table'
+            });
+        }
+        
+        // Show pregnancy analysis using the module
+        function showPregnancyAnalysis() {
+            const content = document.getElementById('content');
+            content.innerHTML = `
+                <div class="visualization-content">
+                    <div class="visualization-header">
+                        <h2>Pregnancy Status Analysis</h2>
+                        <div class="visualization-actions">
+                            <button class="btn btn-secondary" onclick="exportPregnancyData()">
+                                <i class="fas fa-download"></i> Export Data
+                            </button>
+                            <button class="btn btn-secondary" onclick="downloadPregnancyChart()">
+                                <i class="fas fa-image"></i> Save Chart
+                            </button>
+                        </div>
+                    </div>
+                    <div id="pregnancy-summary"></div>
+                    <div class="chart-container" id="pregnancyChart"></div>
+                    <div id="pregnancy-table" style="margin-top: 2rem;"></div>
+                    <div id="pregnancy-note" style="margin-top: 1rem; padding: 1rem; background: #f0f4f8; border-radius: 8px;"></div>
+                </div>
+            `;
+            
+            // Create chart using the module
+            ADRCharts.pregnancy.createChart('pregnancyChart', filteredData, {
+                summaryContainerId: 'pregnancy-summary',
+                tableContainerId: 'pregnancy-table',
+                noteContainerId: 'pregnancy-note'
+            });
+            
+            // Set destroyer for cleanup
+            currentActiveChartDestroyer = ADRCharts.pregnancy.destroy.bind(ADRCharts.pregnancy);
+        }
+        
+        function exportPregnancyData() {
+            ADRCharts.pregnancy.exportData(filteredData, 'adr_pregnancy_status.csv');
+            showSuccess('Pregnancy data exported successfully!');
+        }
+        
+        function downloadPregnancyChart() {
+            if (ADRCharts.pregnancy._chartInstance) {
+                const canvas = ADRCharts.pregnancy._chartInstance.canvas;
+                const url = canvas.toDataURL('image/png');
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'adr_pregnancy_status.png';
+                a.click();
+                showSuccess('Chart image downloaded successfully!');
+            }
+        }
+        
+        // Show lactation analysis using the module
+        function showLactationAnalysis() {
+            const content = document.getElementById('content');
+            content.innerHTML = `
+                <div class="visualization-content">
+                    <div class="visualization-header">
+                        <h2>Lactation Status Analysis</h2>
+                        <div class="visualization-actions">
+                            <button class="btn btn-secondary" onclick="exportLactationData()">
+                                <i class="fas fa-download"></i> Export Data
+                            </button>
+                            <button class="btn btn-secondary" onclick="downloadLactationChart()">
+                                <i class="fas fa-image"></i> Save Chart
+                            </button>
+                        </div>
+                    </div>
+                    <div id="lactation-summary"></div>
+                    <div class="chart-container" id="lactationChart"></div>
+                    <div id="lactation-table" style="margin-top: 2rem;"></div>
+                    <div id="lactation-note" style="margin-top: 1rem; padding: 1rem; background: #f0f4f8; border-radius: 8px;"></div>
+                </div>
+            `;
+            
+            // Create chart using the module
+            ADRCharts.lactation.createChart('lactationChart', filteredData, {
+                summaryContainerId: 'lactation-summary',
+                tableContainerId: 'lactation-table',
+                noteContainerId: 'lactation-note'
+            });
+            
+            // Set destroyer for cleanup
+            currentActiveChartDestroyer = ADRCharts.lactation.destroy.bind(ADRCharts.lactation);
+        }
+        
+        function exportLactationData() {
+            ADRCharts.lactation.exportData(filteredData, 'adr_lactation_status.csv');
+            showSuccess('Lactation data exported successfully!');
+        }
+        
+        function downloadLactationChart() {
+            if (ADRCharts.lactation._chartInstance) {
+                const canvas = ADRCharts.lactation._chartInstance.canvas;
+                const url = canvas.toDataURL('image/png');
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'adr_lactation_status.png';
+                a.click();
+                showSuccess('Chart image downloaded successfully!');
+            }
+        }
+        
+        // UI Helper functions
+        function showLoading() {
+            document.getElementById('loading').style.display = 'flex';
+        }
+        
+        function hideLoading() {
+            document.getElementById('loading').style.display = 'none';
+        }
+        
+        function showSuccess(message) {
+            console.log('Success:', message);
+            // You can implement a toast notification here
+        }
+        
+        function showError(message) {
+            console.error('Error:', message);
+            alert(message);
+        }
+    </script>
+</body>
+</html>

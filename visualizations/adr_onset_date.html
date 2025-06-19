@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ADR Onset Date Visualization - VigiFlow</title>
+    
+    <!-- External Libraries -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.17.0/xlsx.full.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    
+    <!-- Common Styles -->
+    <link rel="stylesheet" href="../assets/css/common.css">
+</head>
+<body>
+    <div class="header">
+        <h1>ADR Onset Date Visualization Tool</h1>
+        <p>Adverse Drug Reactions - Reaction Onset Date Analysis from VigiFlow</p>
+    </div>
+    
+    <div class="container">
+        <!-- Upload Section -->
+        <div class="upload-section">
+            <h2>Upload ADR Data File</h2>
+            <p>Select an Excel file (.xlsx, .xls) containing ADR data from VigiFlow</p>
+            <div class="upload-area" id="upload-area">
+                <i class="fas fa-cloud-upload-alt" style="font-size: 3rem; color: #2a5298;"></i>
+                <p style="margin: 1rem 0;">Drag and drop your file here or click to browse</p>
+                <input type="file" id="file-input" accept=".xlsx,.xls">
+            </div>
+            <div id="file-info" style="margin-top: 1rem; display: none;">
+                <p>Selected file: <strong id="file-name"></strong></p>
+            </div>
+        </div>
+        
+        <!-- Loading -->
+        <div class="loading" id="loading">
+            <div class="spinner"></div>
+            <p>Processing your data...</p>
+        </div>
+        
+        <!-- Messages -->
+        <div class="message success" id="success-message"></div>
+        <div class="message error" id="error-message"></div>
+        
+        <!-- Filter Section -->
+        <div class="filter-section" id="filter-section">
+            <h2>Filter Data</h2>
+            <div class="filter-grid">
+                <div class="filter-group">
+                    <label for="year-filter">Year</label>
+                    <select id="year-filter">
+                        <option value="">All Years</option>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label for="date-from">Date From</label>
+                    <input type="date" id="date-from">
+                </div>
+                <div class="filter-group">
+                    <label for="date-to">Date To</label>
+                    <input type="date" id="date-to">
+                </div>
+            </div>
+            <div style="margin-top: 1rem;">
+                <button class="btn btn-primary" onclick="applyFilters()">Apply Filters</button>
+                <button class="btn btn-secondary" onclick="resetFilters()">Reset</button>
+            </div>
+        </div>
+        
+        <!-- Summary Statistics -->
+        <div class="summary-section" id="summary-section">
+            <h2>Summary Statistics</h2>
+            <div class="stats-grid" id="stats-grid">
+                <!-- Stats will be populated here -->
+            </div>
+        </div>
+        
+        <!-- Visualization Section -->
+        <div class="visualization-section" id="visualization-section">
+            <div class="chart-header">
+                <h2 class="chart-title">ADR Reports by Reaction Onset Date</h2>
+                <div class="chart-actions">
+                    <button class="chart-btn" onclick="downloadChartImage()">
+                        <i class="fas fa-download"></i> Download
+                    </button>
+                    <button class="chart-btn" onclick="maximizeChart()">
+                        <i class="fas fa-expand"></i> Maximize
+                    </button>
+                </div>
+            </div>
+            <div class="chart-container">
+                <canvas id="monthly-chart"></canvas>
+            </div>
+        </div>
+        
+        <!-- Export Section -->
+        <div class="visualization-section" id="export-section" style="display: none;">
+            <h2>Export Options</h2>
+            <div style="text-align: center; padding: 2rem;">
+                <button class="btn btn-primary" onclick="exportToPDF()">
+                    <i class="fas fa-file-pdf"></i> Export as PDF
+                </button>
+                <button class="btn btn-primary" onclick="exportToCSV()">
+                    <i class="fas fa-file-csv"></i> Export Data as CSV
+                </button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Common JavaScript -->
+    <script src="../assets/js/common.js"></script>
+    
+    <!-- Page-specific JavaScript -->
+    <script>
+        let monthlyChart = null;
+        const dateField = '_parsedDate';
+        
+        // Process data specific to this visualization
+        function processData(data) {
+            originalData = data;
+            filteredData = data;
+            
+            // Parse dates from Onset date / Time column
+            originalData.forEach(row => {
+                // Try to parse from Onset date / Time column
+                if (row['Onset date / Time']) {
+                    row._parsedDate = parseOnsetDate(row['Onset date / Time']);
+                }
+                
+                // Fallback to Initial received date if no onset date
+                if (!row._parsedDate && row['Initial received date']) {
+                    row._parsedDate = parseInitialReceivedDate(row['Initial received date']);
+                    row._isFallback = true; // Mark as fallback
+                }
+            });
+            
+            hideLoading();
+            showSuccess(`Successfully loaded ${data.length} ADR records`);
+            
+            // Show sections
+            showSections();
+            
+            // Populate filters
+            populateYearFilter(originalData, dateField);
+            
+            // Generate visualizations
+            generateVisualization();
+            updateSummaryStats();
+            
+            // Log data quality info
+            const totalRecords = originalData.length;
+            const recordsWithOnsetDate = originalData.filter(row => row['Onset date / Time'] && row['Onset date / Time'].trim() !== '').length;
+            const recordsWithParsedDate = originalData.filter(row => row._parsedDate && !isNaN(row._parsedDate)).length;
+            const recordsUsingFallback = originalData.filter(row => row._isFallback).length;
+            console.log(`Data Quality: ${recordsWithOnsetDate}/${totalRecords} records have onset date data`);
+            console.log(`Successfully parsed ${recordsWithParsedDate} dates (${recordsUsingFallback} using fallback to initial received date)`);
+        }
+        
+        // Apply filters
+        function applyFilters() {
+            filteredData = applyDateFilters(originalData, dateField);
+            generateVisualization();
+            updateSummaryStats();
+            showSuccess(`Filters applied. Showing ${filteredData.length} records.`);
+        }
+        
+        // Reset filters
+        function resetFilters() {
+            document.getElementById('year-filter').value = '';
+            document.getElementById('date-from').value = '';
+            document.getElementById('date-to').value = '';
+            
+            filteredData = originalData;
+            generateVisualization();
+            updateSummaryStats();
+            showSuccess('Filters reset.');
+        }
+        
+        // Generate visualization
+        function generateVisualization() {
+            const monthlyData = getMonthlyData(filteredData, dateField);
+            
+            // Chart colors - using red/pink for onset date
+            const colors = {
+                background: 'rgba(255, 99, 132, 0.7)',
+                border: 'rgba(255, 99, 132, 1)',
+                hoverBackground: 'rgba(255, 99, 132, 0.9)',
+                hoverBorder: 'rgba(255, 99, 132, 1)'
+            };
+            
+            // Destroy existing chart if any
+            if (monthlyChart) {
+                monthlyChart.destroy();
+            }
+            
+            // Create new chart
+            const ctx = document.getElementById('monthly-chart').getContext('2d');
+            const config = createBarChartConfig(monthlyData, 'Number of ADR Reports by Onset Date', colors);
+            monthlyChart = new Chart(ctx, config);
+        }
+        
+        // Update summary statistics
+        function updateSummaryStats() {
+            const statsGrid = document.getElementById('stats-grid');
+            statsGrid.innerHTML = '';
+            
+            // Total cases
+            addStatCard(statsGrid, 'Total ADR Cases', filteredData.length);
+            
+            // Cases with valid onset dates
+            const validOnsetDates = filteredData.filter(row => row._parsedDate && !isNaN(row._parsedDate) && !row._isFallback).length;
+            const fallbackDates = filteredData.filter(row => row._parsedDate && !isNaN(row._parsedDate) && row._isFallback).length;
+            
+            addStatCard(statsGrid, 'Cases with Valid Onset Dates', validOnsetDates);
+            addStatCard(statsGrid, 'Cases Using Received Date', fallbackDates);
+            
+            // Data completeness
+            const onsetCompleteness = filteredData.length > 0 ? ((validOnsetDates / filteredData.length) * 100).toFixed(1) : 0;
+            addStatCard(statsGrid, 'Onset Date Completeness', `${onsetCompleteness}%`);
+            
+            // Most active month
+            const monthlyData = getMonthlyData(filteredData, dateField);
+            const maxMonth = Object.entries(monthlyData).sort((a, b) => b[1] - a[1])[0];
+            if (maxMonth && maxMonth[1] > 0) {
+                addStatCard(statsGrid, 'Most Active Month', `${maxMonth[0]} (${maxMonth[1]} cases)`);
+            }
+            
+            // Date range
+            const dates = filteredData
+                .filter(row => row._parsedDate && !isNaN(row._parsedDate))
+                .map(row => row._parsedDate);
+            
+            if (dates.length > 0) {
+                const minDate = new Date(Math.min(...dates));
+                const maxDate = new Date(Math.max(...dates));
+                addStatCard(statsGrid, 'Date Range', 
+                    `${minDate.toLocaleDateString()} - ${maxDate.toLocaleDateString()}`);
+            }
+        }
+        
+        // Page-specific export functions
+        function downloadChartImage() {
+            downloadChart(monthlyChart, 'adr_onset_monthly_reports.png');
+        }
+        
+        function maximizeChart() {
+            createMaximizeModal(monthlyChart, 'ADR Reports by Reaction Onset Date');
+        }
+        
+        function exportToCSV() {
+            const monthlyData = getMonthlyData(filteredData, dateField);
+            
+            // Create CSV content with additional info
+            let csvContent = 'Month,Number of Cases\n';
+            monthNames.forEach(month => {
+                csvContent += `${month},${monthlyData[month]}\n`;
+            });
+            
+            // Add summary
+            csvContent += '\nSummary\n';
+            csvContent += `Total Cases,${filteredData.length}\n`;
+            const validOnsetDates = filteredData.filter(row => row._parsedDate && !isNaN(row._parsedDate) && !row._isFallback).length;
+            csvContent += `Cases with Valid Onset Dates,${validOnsetDates}\n`;
+            
+            // Create and download file
+            const blob = new Blob([csvContent], { type: 'text/csv' });
+            const url = window.URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = 'adr_onset_date_data.csv';
+            link.click();
+            
+            window.URL.revokeObjectURL(url);
+            showSuccess('CSV exported successfully!');
+        }
+        
+        function exportToPDF() {
+            showLoading();
+            
+            const { jsPDF } = window.jspdf;
+            const pdf = new jsPDF();
+            
+            // Add title
+            pdf.setFontSize(20);
+            pdf.text('ADR Reports by Reaction Onset Date', 20, 20);
+            
+            // Add date
+            pdf.setFontSize(12);
+            pdf.text(`Generated on: ${new Date().toLocaleDateString()}`, 20, 30);
+            
+            // Add summary stats
+            pdf.setFontSize(14);
+            pdf.text('Summary Statistics:', 20, 45);
+            
+            pdf.setFontSize(11);
+            pdf.text(`Total ADR Cases: ${filteredData.length}`, 30, 55);
+            
+            const validOnsetDates = filteredData.filter(row => row._parsedDate && !isNaN(row._parsedDate) && !row._isFallback).length;
+            const fallbackDates = filteredData.filter(row => row._parsedDate && !isNaN(row._parsedDate) && row._isFallback).length;
+            
+            pdf.text(`Cases with Valid Onset Dates: ${validOnsetDates}`, 30, 65);
+            pdf.text(`Cases Using Received Date (Fallback): ${fallbackDates}`, 30, 75);
+            
+            const onsetCompleteness = filteredData.length > 0 ? ((validOnsetDates / filteredData.length) * 100).toFixed(1) : 0;
+            pdf.text(`Onset Date Completeness: ${onsetCompleteness}%`, 30, 85);
+            
+            // Add chart
+            if (monthlyChart) {
+                const chartImage = monthlyChart.toBase64Image();
+                pdf.addImage(chartImage, 'PNG', 20, 100, 170, 100);
+            }
+            
+            // Save PDF
+            pdf.save('adr_onset_date_analysis.pdf');
+            
+            hideLoading();
+            showSuccess('PDF exported successfully!');
+        }
+    </script>
+</body>
+</html>

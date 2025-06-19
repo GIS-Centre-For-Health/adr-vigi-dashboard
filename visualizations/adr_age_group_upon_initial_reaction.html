@@ -1,0 +1,696 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ADR Age Group Analysis - VigiFlow</title>
+    
+    <!-- External Libraries -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.17.0/xlsx.full.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    
+    <!-- Common Styles -->
+    <link rel="stylesheet" href="../assets/css/common.css">
+</head>
+<body>
+    <div class="header">
+        <h1>ADR Age Group Analysis</h1>
+        <p>Age Distribution at Initial Reaction from VigiFlow Data</p>
+    </div>
+    
+    <div class="container">
+        <!-- Upload Section -->
+        <div class="upload-section">
+            <h2>Upload ADR Data File</h2>
+            <p>Select an Excel file (.xlsx, .xls) containing ADR data from VigiFlow</p>
+            <div class="upload-area" id="upload-area">
+                <i class="fas fa-cloud-upload-alt" style="font-size: 3rem; color: #2a5298;"></i>
+                <p style="margin: 1rem 0;">Drag and drop your file here or click to browse</p>
+                <input type="file" id="file-input" accept=".xlsx,.xls">
+            </div>
+            <div id="file-info" style="margin-top: 1rem; display: none;">
+                <p>Selected file: <strong id="file-name"></strong></p>
+            </div>
+        </div>
+        
+        <!-- Loading -->
+        <div class="loading" id="loading">
+            <div class="spinner"></div>
+            <p>Processing your data...</p>
+        </div>
+        
+        <!-- Messages -->
+        <div class="message success" id="success-message"></div>
+        <div class="message error" id="error-message"></div>
+        
+        <!-- Filter Section -->
+        <div class="filter-section" id="filter-section">
+            <h2>Filter Data</h2>
+            <div class="filter-grid">
+                <div class="filter-group">
+                    <label for="year-filter">Year</label>
+                    <select id="year-filter">
+                        <option value="">All Years</option>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label for="date-from">Date From</label>
+                    <input type="date" id="date-from">
+                </div>
+                <div class="filter-group">
+                    <label for="date-to">Date To</label>
+                    <input type="date" id="date-to">
+                </div>
+            </div>
+            <div style="margin-top: 1rem;">
+                <button class="btn btn-primary" onclick="applyFilters()">Apply Filters</button>
+                <button class="btn btn-secondary" onclick="resetFilters()">Reset</button>
+            </div>
+        </div>
+        
+        <!-- Summary Statistics -->
+        <div class="summary-section" id="summary-section">
+            <h2>Summary Statistics</h2>
+            <div class="stats-grid" id="stats-grid">
+                <!-- Stats will be populated here -->
+            </div>
+        </div>
+        
+        <!-- Visualization Section -->
+        <div class="visualization-section" id="visualization-section">
+            <div class="chart-header">
+                <h2 class="chart-title">ADR Cases by Age Group</h2>
+                <div class="chart-actions">
+                    <button class="chart-btn" onclick="downloadChartImage()">
+                        <i class="fas fa-download"></i> Download
+                    </button>
+                    <button class="chart-btn" onclick="maximizeChart()">
+                        <i class="fas fa-expand"></i> Maximize
+                    </button>
+                </div>
+            </div>
+            <div class="chart-container" style="height: 400px; max-width: 600px; margin: 2rem auto;">
+                <canvas id="age-group-chart"></canvas>
+            </div>
+            
+            <!-- Data Table -->
+            <div class="data-table-section" style="margin-top: 2rem;">
+                <h3>Age Group Distribution</h3>
+                <table class="data-table" id="age-group-table">
+                    <thead>
+                        <tr>
+                            <th>Age Group</th>
+                            <th>Count</th>
+                            <th>Percentage</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <!-- Table rows will be populated here -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        
+        <!-- Export Section -->
+        <div class="visualization-section" id="export-section" style="display: none;">
+            <h2>Export Options</h2>
+            <div style="text-align: center; padding: 2rem;">
+                <button class="btn btn-primary" onclick="exportToPDF()">
+                    <i class="fas fa-file-pdf"></i> Export as PDF
+                </button>
+                <button class="btn btn-primary" onclick="exportToCSV()">
+                    <i class="fas fa-file-csv"></i> Export Data as CSV
+                </button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Common JavaScript -->
+    <script src="../assets/js/common.js"></script>
+    
+    <!-- Page-specific JavaScript -->
+    <script>
+        let ageGroupChart = null;
+        const dateField = '_parsedDate';
+        
+        // Define age groups with colors
+        const ageGroups = {
+            'Neonate (≤ 28 days)': {
+                min: 0,
+                max: 28,
+                unit: 'days',
+                color: {
+                    background: 'rgba(255, 99, 132, 0.8)',
+                    border: 'rgba(255, 99, 132, 1)'
+                }
+            },
+            'Infant (29 days - 1 year)': {
+                min: 29,
+                max: 365,
+                unit: 'days',
+                color: {
+                    background: 'rgba(255, 159, 64, 0.8)',
+                    border: 'rgba(255, 159, 64, 1)'
+                }
+            },
+            'Child (1-12 years)': {
+                min: 1,
+                max: 12,
+                unit: 'years',
+                color: {
+                    background: 'rgba(255, 205, 86, 0.8)',
+                    border: 'rgba(255, 205, 86, 1)'
+                }
+            },
+            'Adolescent (13-17 years)': {
+                min: 13,
+                max: 17,
+                unit: 'years',
+                color: {
+                    background: 'rgba(75, 192, 192, 0.8)',
+                    border: 'rgba(75, 192, 192, 1)'
+                }
+            },
+            'Adult (18-60 years)': {
+                min: 18,
+                max: 60,
+                unit: 'years',
+                color: {
+                    background: 'rgba(54, 162, 235, 0.8)',
+                    border: 'rgba(54, 162, 235, 1)'
+                }
+            },
+            'Elderly (> 60 years)': {
+                min: 60,
+                max: 999,
+                unit: 'years',
+                color: {
+                    background: 'rgba(153, 102, 255, 0.8)',
+                    border: 'rgba(153, 102, 255, 1)'
+                }
+            }
+        };
+        
+        // Calculate age in years from days
+        function ageInYears(ageInDays) {
+            return ageInDays / 365.25;
+        }
+        
+        // Determine age group based on age
+        function getAgeGroup(ageInDays) {
+            const ageYears = ageInYears(ageInDays);
+            
+            if (ageInDays <= 28) return 'Neonate (≤ 28 days)';
+            if (ageInDays <= 365) return 'Infant (29 days - 1 year)';
+            if (ageYears <= 12) return 'Child (1-12 years)';
+            if (ageYears <= 17) return 'Adolescent (13-17 years)';
+            if (ageYears <= 60) return 'Adult (18-60 years)';
+            return 'Elderly (> 60 years)';
+        }
+        
+        // Parse age from "Age at onset of reaction" field
+        function parseAgeAtOnset(ageString) {
+            if (!ageString) return null;
+            
+            // Match patterns like "44 Year", "6 Month", "10 Day", etc.
+            const match = ageString.match(/(\d+\.?\d*)\s*(Year|Month|Week|Day|Hour)/i);
+            if (!match) return null;
+            
+            const value = parseFloat(match[1]);
+            const unit = match[2].toLowerCase();
+            
+            // Convert to days
+            let ageInDays;
+            switch(unit) {
+                case 'year':
+                    ageInDays = value * 365.25;
+                    break;
+                case 'month':
+                    ageInDays = value * 30.44; // Average month length
+                    break;
+                case 'week':
+                    ageInDays = value * 7;
+                    break;
+                case 'day':
+                    ageInDays = value;
+                    break;
+                case 'hour':
+                    ageInDays = value / 24;
+                    break;
+                default:
+                    return null;
+            }
+            
+            return ageInDays;
+        }
+        
+        // Calculate age from birth date and initial received date
+        function calculateAge(birthDate, receivedDate) {
+            if (!birthDate || !receivedDate) return null;
+            
+            const diffTime = receivedDate - birthDate;
+            const diffDays = diffTime / (1000 * 60 * 60 * 24);
+            
+            return diffDays > 0 ? diffDays : null;
+        }
+        
+        // Process data specific to this visualization
+        function processData(data) {
+            originalData = data;
+            filteredData = data;
+            
+            // Process each row to calculate age
+            originalData.forEach(row => {
+                // Parse Initial received date for filtering
+                if (row['Initial received date']) {
+                    row._parsedDate = parseInitialReceivedDate(row['Initial received date']);
+                }
+                
+                // Parse Date of birth
+                let birthDate = null;
+                if (row['Date of birth']) {
+                    const dobValue = row['Date of birth'];
+                    
+                    // Handle YYYYMMDD format as number
+                    if (typeof dobValue === 'number' || /^\d{8}$/.test(dobValue.toString())) {
+                        const dateStr = dobValue.toString();
+                        const year = parseInt(dateStr.substring(0, 4));
+                        const month = parseInt(dateStr.substring(4, 6));
+                        const day = parseInt(dateStr.substring(6, 8));
+                        
+                        if (year >= 1900 && year <= 2030 && month >= 1 && month <= 12 && day >= 1 && day <= 31) {
+                            birthDate = new Date(year, month - 1, day);
+                        }
+                    }
+                }
+                
+                // Calculate age based on birth date and initial received date
+                let ageInDays = null;
+                if (birthDate && row._parsedDate) {
+                    ageInDays = calculateAge(birthDate, row._parsedDate);
+                }
+                
+                // If no age calculated from dates, try "Age at onset of reaction"
+                if (!ageInDays && row['Age at onset of reaction']) {
+                    ageInDays = parseAgeAtOnset(row['Age at onset of reaction']);
+                }
+                
+                // Store calculated age and group
+                row._calculatedAgeInDays = ageInDays;
+                row._ageGroup = ageInDays ? getAgeGroup(ageInDays) : 'Unknown';
+            });
+            
+            hideLoading();
+            showSuccess(`Successfully loaded ${data.length} ADR records`);
+            
+            // Show sections
+            showSections();
+            
+            // Populate filters
+            populateYearFilter(originalData, dateField);
+            
+            // Generate visualizations
+            generateVisualization();
+            updateSummaryStats();
+            
+            // Log data quality info
+            const totalRecords = originalData.length;
+            const recordsWithAge = originalData.filter(row => row._calculatedAgeInDays !== null).length;
+            console.log(`Data Quality: ${recordsWithAge}/${totalRecords} records have calculable age`);
+        }
+        
+        // Apply filters
+        function applyFilters() {
+            filteredData = applyDateFilters(originalData, dateField);
+            generateVisualization();
+            updateSummaryStats();
+            showSuccess(`Filters applied. Showing ${filteredData.length} records.`);
+        }
+        
+        // Reset filters
+        function resetFilters() {
+            document.getElementById('year-filter').value = '';
+            document.getElementById('date-from').value = '';
+            document.getElementById('date-to').value = '';
+            
+            filteredData = originalData;
+            generateVisualization();
+            updateSummaryStats();
+            showSuccess('Filters reset.');
+        }
+        
+        // Generate visualization
+        function generateVisualization() {
+            // Count age groups
+            const ageGroupCounts = {};
+            
+            // Initialize all age groups with 0
+            Object.keys(ageGroups).forEach(group => {
+                ageGroupCounts[group] = 0;
+            });
+            ageGroupCounts['Unknown'] = 0;
+            
+            // Count cases in each age group
+            filteredData.forEach(row => {
+                const group = row._ageGroup || 'Unknown';
+                ageGroupCounts[group] = (ageGroupCounts[group] || 0) + 1;
+            });
+            
+            // Prepare data for chart
+            const labels = [];
+            const data = [];
+            const backgroundColors = [];
+            const borderColors = [];
+            
+            // Add age groups in order
+            Object.keys(ageGroups).forEach(group => {
+                if (ageGroupCounts[group] > 0) {
+                    labels.push(group);
+                    data.push(ageGroupCounts[group]);
+                    backgroundColors.push(ageGroups[group].color.background);
+                    borderColors.push(ageGroups[group].color.border);
+                }
+            });
+            
+            // Add Unknown if present
+            if (ageGroupCounts['Unknown'] > 0) {
+                labels.push('Unknown');
+                data.push(ageGroupCounts['Unknown']);
+                backgroundColors.push('rgba(189, 195, 199, 0.8)');
+                borderColors.push('rgba(189, 195, 199, 1)');
+            }
+            
+            const total = data.reduce((a, b) => a + b, 0);
+            
+            // Chart configuration
+            const config = {
+                type: 'pie',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        data: data,
+                        backgroundColor: backgroundColors,
+                        borderColor: borderColors,
+                        borderWidth: 2,
+                        hoverOffset: 10
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        title: {
+                            display: true,
+                            text: `Total Cases: ${total.toLocaleString()}`,
+                            font: {
+                                size: 16,
+                                weight: 'normal'
+                            },
+                            padding: 20
+                        },
+                        legend: {
+                            position: 'bottom',
+                            labels: {
+                                padding: 15,
+                                font: {
+                                    size: 12
+                                },
+                                generateLabels: function(chart) {
+                                    const data = chart.data;
+                                    if (data.labels.length && data.datasets.length) {
+                                        return data.labels.map((label, i) => {
+                                            const dataset = data.datasets[0];
+                                            const value = dataset.data[i];
+                                            const percentage = ((value / total) * 100).toFixed(1);
+                                            return {
+                                                text: `${label} (${value})`,
+                                                fillStyle: dataset.backgroundColor[i],
+                                                strokeStyle: dataset.borderColor[i],
+                                                lineWidth: dataset.borderWidth,
+                                                hidden: false,
+                                                index: i
+                                            };
+                                        });
+                                    }
+                                    return [];
+                                }
+                            }
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    const value = context.raw;
+                                    const percentage = ((value / total) * 100).toFixed(1);
+                                    return [
+                                        `Count: ${value.toLocaleString()}`,
+                                        `Percentage: ${percentage}%`
+                                    ];
+                                }
+                            },
+                            backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                            padding: 12,
+                            titleFont: {
+                                size: 14,
+                                weight: 'bold'
+                            },
+                            bodyFont: {
+                                size: 13
+                            }
+                        }
+                    }
+                }
+            };
+            
+            // Destroy existing chart if any
+            if (ageGroupChart) {
+                ageGroupChart.destroy();
+            }
+            
+            // Create new chart
+            const ctx = document.getElementById('age-group-chart').getContext('2d');
+            ageGroupChart = new Chart(ctx, config);
+            
+            // Update data table
+            updateDataTable(ageGroupCounts, total);
+        }
+        
+        // Update data table
+        function updateDataTable(ageGroupCounts, total) {
+            const tbody = document.querySelector('#age-group-table tbody');
+            tbody.innerHTML = '';
+            
+            // Create ordered list of age groups
+            const orderedGroups = [];
+            
+            // Add defined age groups in order
+            Object.keys(ageGroups).forEach(group => {
+                if (ageGroupCounts[group] > 0) {
+                    orderedGroups.push([group, ageGroupCounts[group]]);
+                }
+            });
+            
+            // Add Unknown if present
+            if (ageGroupCounts['Unknown'] > 0) {
+                orderedGroups.push(['Unknown', ageGroupCounts['Unknown']]);
+            }
+            
+            // Add rows to table
+            orderedGroups.forEach(([group, count]) => {
+                const percentage = ((count / total) * 100).toFixed(1);
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td>${group}</td>
+                    <td style="text-align: right;">${count.toLocaleString()}</td>
+                    <td style="text-align: right;">${percentage}%</td>
+                `;
+                tbody.appendChild(row);
+            });
+            
+            // Add total row
+            const totalRow = document.createElement('tr');
+            totalRow.style.fontWeight = 'bold';
+            totalRow.style.borderTop = '2px solid #ddd';
+            totalRow.innerHTML = `
+                <td>Total</td>
+                <td style="text-align: right;">${total.toLocaleString()}</td>
+                <td style="text-align: right;">100.0%</td>
+            `;
+            tbody.appendChild(totalRow);
+        }
+        
+        // Update summary statistics
+        function updateSummaryStats() {
+            const statsGrid = document.getElementById('stats-grid');
+            statsGrid.innerHTML = '';
+            
+            // Total cases
+            addStatCard(statsGrid, 'Total ADR Cases', filteredData.length);
+            
+            // Cases with age data
+            const casesWithAge = filteredData.filter(row => row._calculatedAgeInDays !== null).length;
+            addStatCard(statsGrid, 'Cases with Age Data', casesWithAge);
+            
+            // Age data completeness
+            const completeness = filteredData.length > 0 ? 
+                ((casesWithAge / filteredData.length) * 100).toFixed(1) : 0;
+            addStatCard(statsGrid, 'Age Data Completeness', `${completeness}%`);
+            
+            // Average age (if available)
+            const agesInYears = filteredData
+                .filter(row => row._calculatedAgeInDays !== null)
+                .map(row => ageInYears(row._calculatedAgeInDays));
+            
+            if (agesInYears.length > 0) {
+                const avgAge = (agesInYears.reduce((a, b) => a + b, 0) / agesInYears.length).toFixed(1);
+                addStatCard(statsGrid, 'Average Age', `${avgAge} years`);
+            }
+            
+            // Most common age group
+            const ageGroupCounts = {};
+            filteredData.forEach(row => {
+                const group = row._ageGroup || 'Unknown';
+                ageGroupCounts[group] = (ageGroupCounts[group] || 0) + 1;
+            });
+            
+            const sortedGroups = Object.entries(ageGroupCounts)
+                .sort((a, b) => b[1] - a[1]);
+            
+            if (sortedGroups.length > 0) {
+                const [mostCommon, count] = sortedGroups[0];
+                const percentage = ((count / filteredData.length) * 100).toFixed(1);
+                addStatCard(statsGrid, 'Most Common Age Group', `${mostCommon} (${percentage}%)`);
+            }
+        }
+        
+        // Page-specific export functions
+        function downloadChartImage() {
+            downloadChart(ageGroupChart, 'adr_age_groups.png');
+        }
+        
+        function maximizeChart() {
+            createMaximizeModal(ageGroupChart, 'ADR Cases by Age Group');
+        }
+        
+        function exportToCSV() {
+            // Count age groups
+            const ageGroupCounts = {};
+            
+            // Initialize all age groups
+            Object.keys(ageGroups).forEach(group => {
+                ageGroupCounts[group] = 0;
+            });
+            ageGroupCounts['Unknown'] = 0;
+            
+            filteredData.forEach(row => {
+                const group = row._ageGroup || 'Unknown';
+                ageGroupCounts[group] = (ageGroupCounts[group] || 0) + 1;
+            });
+            
+            const total = Object.values(ageGroupCounts).reduce((a, b) => a + b, 0);
+            
+            // Create CSV content
+            let csvContent = 'Age Group,Count,Percentage\n';
+            
+            // Add age groups in order
+            Object.keys(ageGroups).forEach(group => {
+                if (ageGroupCounts[group] > 0) {
+                    const percentage = ((ageGroupCounts[group] / total) * 100).toFixed(1);
+                    csvContent += `"${group}",${ageGroupCounts[group]},${percentage}%\n`;
+                }
+            });
+            
+            // Add Unknown if present
+            if (ageGroupCounts['Unknown'] > 0) {
+                const percentage = ((ageGroupCounts['Unknown'] / total) * 100).toFixed(1);
+                csvContent += `"Unknown",${ageGroupCounts['Unknown']},${percentage}%\n`;
+            }
+            
+            // Add total
+            csvContent += `\nTotal,${total},100.0%\n`;
+            
+            // Create and download file
+            const blob = new Blob([csvContent], { type: 'text/csv' });
+            const url = window.URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = 'adr_age_groups_data.csv';
+            link.click();
+            
+            window.URL.revokeObjectURL(url);
+            showSuccess('CSV exported successfully!');
+        }
+        
+        function exportToPDF() {
+            showLoading();
+            
+            const { jsPDF } = window.jspdf;
+            const pdf = new jsPDF();
+            
+            // Add title
+            pdf.setFontSize(20);
+            pdf.text('ADR Age Group Analysis', 20, 20);
+            
+            // Add date
+            pdf.setFontSize(12);
+            pdf.text(`Generated on: ${new Date().toLocaleDateString()}`, 20, 30);
+            
+            // Add summary stats
+            pdf.setFontSize(14);
+            pdf.text('Summary Statistics:', 20, 45);
+            
+            pdf.setFontSize(11);
+            pdf.text(`Total ADR Cases: ${filteredData.length}`, 30, 55);
+            
+            const casesWithAge = filteredData.filter(row => row._calculatedAgeInDays !== null).length;
+            pdf.text(`Cases with Age Data: ${casesWithAge}`, 30, 65);
+            
+            // Count age groups for the breakdown
+            const ageGroupCounts = {};
+            Object.keys(ageGroups).forEach(group => {
+                ageGroupCounts[group] = 0;
+            });
+            ageGroupCounts['Unknown'] = 0;
+            
+            filteredData.forEach(row => {
+                const group = row._ageGroup || 'Unknown';
+                ageGroupCounts[group] = (ageGroupCounts[group] || 0) + 1;
+            });
+            
+            const total = Object.values(ageGroupCounts).reduce((a, b) => a + b, 0);
+            
+            // Add age group breakdown
+            let yPos = 80;
+            pdf.text('Age Group Breakdown:', 30, yPos);
+            
+            // Add groups in order
+            Object.keys(ageGroups).forEach(group => {
+                if (ageGroupCounts[group] > 0) {
+                    yPos += 10;
+                    const percentage = ((ageGroupCounts[group] / total) * 100).toFixed(1);
+                    pdf.text(`${group}: ${ageGroupCounts[group]} (${percentage}%)`, 40, yPos);
+                }
+            });
+            
+            if (ageGroupCounts['Unknown'] > 0) {
+                yPos += 10;
+                const percentage = ((ageGroupCounts['Unknown'] / total) * 100).toFixed(1);
+                pdf.text(`Unknown: ${ageGroupCounts['Unknown']} (${percentage}%)`, 40, yPos);
+            }
+            
+            // Add chart
+            if (ageGroupChart) {
+                const chartImage = ageGroupChart.toBase64Image();
+                pdf.addImage(chartImage, 'PNG', 20, yPos + 20, 170, 120);
+            }
+            
+            // Save PDF
+            pdf.save('adr_age_groups_analysis.pdf');
+            
+            hideLoading();
+            showSuccess('PDF exported successfully!');
+        }
+    </script>
+</body>
+</html>

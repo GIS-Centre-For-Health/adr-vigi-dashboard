@@ -1,0 +1,458 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ADR Reporter Qualification Visualization - VigiFlow</title>
+    
+    <!-- External Libraries -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.17.0/xlsx.full.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    
+    <!-- Common Styles -->
+    <link rel="stylesheet" href="../assets/css/common.css">
+</head>
+<body>
+    <div class="header">
+        <h1>ADR Visualization Tool</h1>
+        <p>Adverse Drug Reactions Data Analysis from VigiFlow - Reporter Qualification</p>
+    </div>
+    
+    <div class="container">
+        <!-- Upload Section -->
+        <div class="upload-section">
+            <h2>Upload ADR Data File</h2>
+            <p>Select an Excel file (.xlsx, .xls) containing ADR data from VigiFlow</p>
+            <div class="upload-area" id="upload-area">
+                <i class="fas fa-cloud-upload-alt" style="font-size: 3rem; color: #2a5298;"></i>
+                <p style="margin: 1rem 0;">Drag and drop your file here or click to browse</p>
+                <input type="file" id="file-input" accept=".xlsx,.xls">
+            </div>
+            <div id="file-info" style="margin-top: 1rem; display: none;">
+                <p>Selected file: <strong id="file-name"></strong></p>
+            </div>
+        </div>
+        
+        <!-- Loading -->
+        <div class="loading" id="loading">
+            <div class="spinner"></div>
+            <p>Processing your data...</p>
+        </div>
+        
+        <!-- Messages -->
+        <div class="message success" id="success-message"></div>
+        <div class="message error" id="error-message"></div>
+        
+        <!-- Summary Statistics -->
+        <div class="summary-section" id="summary-section">
+            <h2>Summary Statistics</h2>
+            <div class="summary-cards" id="summary-cards">
+                <!-- Summary cards will be populated here -->
+            </div>
+        </div>
+        
+        <!-- Visualization Section -->
+        <div class="visualization-section" id="visualization-section">
+            <div class="chart-header">
+                <h2 class="chart-title">ADR Cases by Reporter Qualification</h2>
+                <div class="chart-actions">
+                    <button class="chart-btn" onclick="downloadChartImage()">
+                        <i class="fas fa-download"></i> Download
+                    </button>
+                    <button class="chart-btn" onclick="maximizeChart()">
+                        <i class="fas fa-expand"></i> Maximize
+                    </button>
+                </div>
+            </div>
+            <div class="toggle-container">
+                <label class="toggle-label">
+                    <input type="checkbox" id="percentage-toggle" onchange="updateChartDisplay()">
+                    <span>Show Percentages</span>
+                </label>
+            </div>
+            <div class="chart-container">
+                <canvas id="reporter-chart"></canvas>
+            </div>
+            
+            <!-- Data Table -->
+            <div id="dataTable">
+                <h2>Reporter Qualification Details</h2>
+                <table id="reporterTable">
+                    <thead>
+                        <tr>
+                            <th onclick="sortTable(0)">Reporter Type <i class="fas fa-sort"></i></th>
+                            <th onclick="sortTable(1)">Count <i class="fas fa-sort"></i></th>
+                            <th onclick="sortTable(2)">Percentage <i class="fas fa-sort"></i></th>
+                        </tr>
+                    </thead>
+                    <tbody id="tableBody"></tbody>
+                </table>
+            </div>
+        </div>
+        
+        <!-- Export Section -->
+        <div class="visualization-section" id="export-section" style="display: none;">
+            <h2>Export Options</h2>
+            <div style="text-align: center; padding: 2rem;">
+                <button class="btn btn-primary" onclick="exportToPDF()">
+                    <i class="fas fa-file-pdf"></i> Export as PDF
+                </button>
+                <button class="btn btn-primary" onclick="exportToCSV()">
+                    <i class="fas fa-file-csv"></i> Export Data as CSV
+                </button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Common JavaScript -->
+    <script src="../assets/js/common.js"></script>
+    
+    <!-- Page-specific JavaScript -->
+    <script>
+        let reporterChart = null;
+        let reporterData = {};
+        let showPercentage = false;
+        
+        // Process data specific to this visualization
+        function processData(data) {
+            originalData = data;
+            filteredData = data;
+            
+            processReporterData(data);
+            
+            hideLoading();
+            showSuccess(`Successfully loaded ${data.length} ADR records`);
+            
+            // Show sections
+            showSections();
+            
+            // Generate visualizations
+            generateVisualization();
+            updateSummaryStats();
+        }
+        
+        function processReporterData(data) {
+            const reporterCategories = {
+                'Physician': { count: 0, color: '#2196F3', category: 'healthcare' },
+                'Pharmacist': { count: 0, color: '#03A9F4', category: 'healthcare' },
+                'Other Health Professional': { count: 0, color: '#00BCD4', category: 'healthcare' },
+                'Lawyer': { count: 0, color: '#FF9800', category: 'non-healthcare' },
+                'Patient/Consumer': { count: 0, color: '#FF5722', category: 'non-healthcare' },
+                'Other non-health professional': { count: 0, color: '#F44336', category: 'non-healthcare' }
+            };
+
+            data.forEach(row => {
+                const qualification = row['Reporter qualification'];
+                if (!qualification) return;
+
+                // Clean and normalize the qualification
+                const cleanQual = qualification.toString().trim();
+                
+                // Handle multiple qualifications separated by line breaks
+                const qualifications = cleanQual.split(/\r?\n|_x000D_/);
+                
+                qualifications.forEach(qual => {
+                    const normalizedQual = normalizeQualification(qual.trim());
+                    if (normalizedQual && reporterCategories[normalizedQual]) {
+                        reporterCategories[normalizedQual].count++;
+                    }
+                });
+            });
+
+            // Calculate totals and percentages
+            const total = Object.values(reporterCategories).reduce((sum, cat) => sum + cat.count, 0);
+            Object.keys(reporterCategories).forEach(key => {
+                reporterCategories[key].percentage = total > 0 ? 
+                    ((reporterCategories[key].count / total) * 100).toFixed(1) : 0;
+            });
+
+            reporterData = reporterCategories;
+        }
+        
+        function normalizeQualification(qual) {
+            const lowerQual = qual.toLowerCase();
+            
+            if (lowerQual.includes('physician') || lowerQual.includes('doctor')) {
+                return 'Physician';
+            } else if (lowerQual.includes('pharmacist')) {
+                return 'Pharmacist';
+            } else if (lowerQual.includes('other health professional')) {
+                return 'Other Health Professional';
+            } else if (lowerQual.includes('lawyer')) {
+                return 'Lawyer';
+            } else if (lowerQual.includes('patient') || lowerQual.includes('consumer')) {
+                return 'Patient/Consumer';
+            } else if (lowerQual.includes('non health professional') || 
+                      lowerQual.includes('non-health professional')) {
+                return 'Other non-health professional';
+            }
+            
+            return null;
+        }
+        
+        // Generate visualization
+        function generateVisualization() {
+            createDonutChart();
+            displayDataTable();
+        }
+        
+        function createDonutChart() {
+            const ctx = document.getElementById('reporter-chart').getContext('2d');
+            
+            const labels = Object.keys(reporterData);
+            const data = labels.map(label => reporterData[label].count);
+            const colors = labels.map(label => reporterData[label].color);
+            
+            if (reporterChart) {
+                reporterChart.destroy();
+            }
+            
+            reporterChart = new Chart(ctx, {
+                type: 'doughnut',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        data: data,
+                        backgroundColor: colors,
+                        borderWidth: 2,
+                        borderColor: '#ffffff'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'right',
+                            labels: {
+                                padding: 15,
+                                usePointStyle: true,
+                                font: {
+                                    size: 12
+                                }
+                            }
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    const label = context.label || '';
+                                    const value = context.parsed;
+                                    const percentage = reporterData[label].percentage;
+                                    return `${label}: ${value} (${percentage}%)`;
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+        
+        function updateChartDisplay() {
+            showPercentage = document.getElementById('percentage-toggle').checked;
+            
+            if (reporterChart) {
+                const labels = Object.keys(reporterData);
+                const data = showPercentage ? 
+                    labels.map(label => parseFloat(reporterData[label].percentage)) :
+                    labels.map(label => reporterData[label].count);
+                
+                reporterChart.data.datasets[0].data = data;
+                
+                reporterChart.options.plugins.tooltip.callbacks.label = function(context) {
+                    const label = context.label || '';
+                    const value = context.parsed;
+                    if (showPercentage) {
+                        return `${label}: ${value}%`;
+                    } else {
+                        const percentage = reporterData[label].percentage;
+                        return `${label}: ${value} (${percentage}%)`;
+                    }
+                };
+                
+                reporterChart.update();
+            }
+        }
+        
+        // Update summary statistics
+        function updateSummaryStats() {
+            const summaryCards = document.getElementById('summary-cards');
+            summaryCards.innerHTML = '';
+            
+            const total = Object.values(reporterData).reduce((sum, cat) => sum + cat.count, 0);
+            const topReporter = Object.entries(reporterData)
+                .sort((a, b) => b[1].count - a[1].count)[0];
+            
+            const healthcareCount = Object.entries(reporterData)
+                .filter(([_, data]) => data.category === 'healthcare')
+                .reduce((sum, [_, data]) => sum + data.count, 0);
+            
+            const nonHealthcareCount = total - healthcareCount;
+            
+            // Total Reports
+            const totalCard = document.createElement('div');
+            totalCard.className = 'summary-card';
+            totalCard.innerHTML = `
+                <div class="card-icon"><i class="fas fa-users"></i></div>
+                <div class="card-content">
+                    <div class="card-title">Total Cases</div>
+                    <div class="card-value">${originalData.length}</div>
+                </div>
+            `;
+            summaryCards.appendChild(totalCard);
+            
+            // Total Reporter Qualifications
+            const qualCard = document.createElement('div');
+            qualCard.className = 'summary-card';
+            qualCard.innerHTML = `
+                <div class="card-icon"><i class="fas fa-clipboard-check"></i></div>
+                <div class="card-content">
+                    <div class="card-title">Total Qualifications</div>
+                    <div class="card-value">${total}</div>
+                </div>
+            `;
+            summaryCards.appendChild(qualCard);
+            
+            // Top Reporter
+            const topCard = document.createElement('div');
+            topCard.className = 'summary-card';
+            topCard.innerHTML = `
+                <div class="card-icon"><i class="fas fa-user-md"></i></div>
+                <div class="card-content">
+                    <div class="card-title">Top Reporter Type</div>
+                    <div class="card-value">${topReporter ? topReporter[0] : '-'}</div>
+                </div>
+            `;
+            summaryCards.appendChild(topCard);
+            
+            // Healthcare Professionals
+            const healthcareCard = document.createElement('div');
+            healthcareCard.className = 'summary-card';
+            healthcareCard.innerHTML = `
+                <div class="card-icon"><i class="fas fa-heartbeat"></i></div>
+                <div class="card-content">
+                    <div class="card-title">Healthcare Professionals</div>
+                    <div class="card-value">${total > 0 ? ((healthcareCount / total) * 100).toFixed(1) : 0}%</div>
+                </div>
+            `;
+            summaryCards.appendChild(healthcareCard);
+            
+            // Non-Healthcare
+            const nonHealthcareCard = document.createElement('div');
+            nonHealthcareCard.className = 'summary-card';
+            nonHealthcareCard.innerHTML = `
+                <div class="card-icon"><i class="fas fa-user"></i></div>
+                <div class="card-content">
+                    <div class="card-title">Non-Healthcare</div>
+                    <div class="card-value">${total > 0 ? ((nonHealthcareCount / total) * 100).toFixed(1) : 0}%</div>
+                </div>
+            `;
+            summaryCards.appendChild(nonHealthcareCard);
+        }
+        
+        function displayDataTable() {
+            const tbody = document.getElementById('tableBody');
+            tbody.innerHTML = '';
+            
+            Object.entries(reporterData)
+                .sort((a, b) => b[1].count - a[1].count)
+                .forEach(([reporter, data]) => {
+                    const row = tbody.insertRow();
+                    row.insertCell(0).textContent = reporter;
+                    row.insertCell(1).textContent = data.count;
+                    row.insertCell(2).textContent = data.percentage + '%';
+                });
+        }
+        
+        function sortTable(columnIndex) {
+            const table = document.getElementById('reporterTable');
+            const tbody = table.querySelector('tbody');
+            const rows = Array.from(tbody.rows);
+            
+            rows.sort((a, b) => {
+                const aValue = columnIndex === 0 ? a.cells[columnIndex].textContent :
+                              parseFloat(a.cells[columnIndex].textContent);
+                const bValue = columnIndex === 0 ? b.cells[columnIndex].textContent :
+                              parseFloat(b.cells[columnIndex].textContent);
+                
+                if (columnIndex === 0) {
+                    return aValue.localeCompare(bValue);
+                } else {
+                    return bValue - aValue;
+                }
+            });
+            
+            tbody.innerHTML = '';
+            rows.forEach(row => tbody.appendChild(row));
+        }
+        
+        // Page-specific export functions
+        function downloadChartImage() {
+            downloadChart(reporterChart, 'adr_reporter_qualification.png');
+        }
+        
+        function maximizeChart() {
+            createMaximizeModal(reporterChart, 'ADR Cases by Reporter Qualification');
+        }
+        
+        function exportToCSV() {
+            const headers = ['Reporter Type', 'Count', 'Percentage'];
+            const rows = Object.entries(reporterData).map(([reporter, data]) => 
+                [reporter, data.count, data.percentage + '%']
+            );
+            
+            downloadCSV(headers, rows, 'adr_reporter_qualification.csv');
+        }
+        
+        function exportToPDF() {
+            showLoading();
+            
+            const { jsPDF } = window.jspdf;
+            const pdf = new jsPDF();
+            
+            // Add title
+            pdf.setFontSize(20);
+            pdf.text('ADR Reporter Qualification Analysis', 20, 20);
+            
+            // Add date
+            pdf.setFontSize(12);
+            pdf.text(`Generated on: ${new Date().toLocaleDateString()}`, 20, 30);
+            
+            // Add summary stats
+            pdf.setFontSize(14);
+            pdf.text('Summary Statistics:', 20, 45);
+            
+            const total = Object.values(reporterData).reduce((sum, cat) => sum + cat.count, 0);
+            pdf.setFontSize(11);
+            pdf.text(`Total Reports: ${total}`, 30, 55);
+            
+            // Add table
+            let yPosition = 70;
+            pdf.setFontSize(12);
+            pdf.text('Reporter Qualification Breakdown:', 20, yPosition);
+            
+            yPosition += 10;
+            pdf.setFontSize(10);
+            Object.entries(reporterData)
+                .sort((a, b) => b[1].count - a[1].count)
+                .forEach(([reporter, data]) => {
+                    pdf.text(`${reporter}: ${data.count} (${data.percentage}%)`, 30, yPosition);
+                    yPosition += 8;
+                });
+            
+            // Add chart
+            if (reporterChart) {
+                const chartImage = reporterChart.toBase64Image();
+                pdf.addImage(chartImage, 'PNG', 20, yPosition + 10, 170, 100);
+            }
+            
+            // Save PDF
+            pdf.save('adr_reporter_qualification_analysis.pdf');
+            
+            hideLoading();
+            showSuccess('PDF exported successfully!');
+        }
+    </script>
+</body>
+</html>

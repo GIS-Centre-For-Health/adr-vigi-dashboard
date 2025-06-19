@@ -1,0 +1,615 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ADR Reporter Organization Visualization - VigiFlow</title>
+    
+    <!-- External Libraries -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.17.0/xlsx.full.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    
+    <!-- Common Styles -->
+    <link rel="stylesheet" href="../assets/css/common.css">
+    
+    <style>
+        .data-quality-warning {
+            background-color: #fff3cd;
+            border: 1px solid #ffeaa7;
+            color: #856404;
+            padding: 1rem;
+            border-radius: 5px;
+            margin: 1rem 0;
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+        
+        .data-quality-warning i {
+            font-size: 1.5rem;
+        }
+        
+        .split-visualization {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 2rem;
+            margin-top: 2rem;
+        }
+        
+        @media (max-width: 968px) {
+            .split-visualization {
+                grid-template-columns: 1fr;
+            }
+        }
+        
+        .chart-section {
+            background: white;
+            padding: 1.5rem;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+        }
+        
+        .chart-section h3 {
+            margin-bottom: 1rem;
+            color: #333;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>ADR Visualization Tool</h1>
+        <p>Adverse Drug Reactions Data Analysis from VigiFlow - Reporter Organization</p>
+    </div>
+    
+    <div class="container">
+        <!-- Upload Section -->
+        <div class="upload-section">
+            <h2>Upload ADR Data File</h2>
+            <p>Select an Excel file (.xlsx, .xls) containing ADR data from VigiFlow</p>
+            <div class="upload-area" id="upload-area">
+                <i class="fas fa-cloud-upload-alt" style="font-size: 3rem; color: #2a5298;"></i>
+                <p style="margin: 1rem 0;">Drag and drop your file here or click to browse</p>
+                <input type="file" id="file-input" accept=".xlsx,.xls">
+            </div>
+            <div id="file-info" style="margin-top: 1rem; display: none;">
+                <p>Selected file: <strong id="file-name"></strong></p>
+            </div>
+        </div>
+        
+        <!-- Loading -->
+        <div class="loading" id="loading">
+            <div class="spinner"></div>
+            <p>Processing your data...</p>
+        </div>
+        
+        <!-- Messages -->
+        <div class="message success" id="success-message"></div>
+        <div class="message error" id="error-message"></div>
+        
+        <!-- Data Quality Warning -->
+        <div class="data-quality-warning" id="data-warning" style="display: none;">
+            <i class="fas fa-exclamation-triangle"></i>
+            <div>
+                <strong>Data Quality Notice:</strong> <span id="missing-percentage"></span>% of records do not have organization information. 
+                The visualizations below show only the available data.
+            </div>
+        </div>
+        
+        <!-- Summary Statistics -->
+        <div class="summary-section" id="summary-section">
+            <h2>Summary Statistics</h2>
+            <div class="summary-cards" id="summary-cards">
+                <!-- Summary cards will be populated here -->
+            </div>
+        </div>
+        
+        <!-- Visualization Section -->
+        <div class="visualization-section" id="visualization-section">
+            <div class="chart-header">
+                <h2 class="chart-title">ADR Reports by Organization</h2>
+                <div class="chart-actions">
+                    <button class="chart-btn" onclick="downloadChartImage()">
+                        <i class="fas fa-download"></i> Download
+                    </button>
+                    <button class="chart-btn" onclick="maximizeChart()">
+                        <i class="fas fa-expand"></i> Maximize
+                    </button>
+                </div>
+            </div>
+            
+            <div class="split-visualization">
+                <!-- Data Availability Chart -->
+                <div class="chart-section">
+                    <h3>Data Availability</h3>
+                    <div class="chart-container" style="height: 300px;">
+                        <canvas id="availability-chart"></canvas>
+                    </div>
+                </div>
+                
+                <!-- Organization Distribution Chart -->
+                <div class="chart-section">
+                    <h3>Organization Distribution (Available Data Only)</h3>
+                    <div class="chart-container" style="height: 300px;">
+                        <canvas id="organization-chart"></canvas>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Data Table -->
+            <div id="dataTable" style="margin-top: 2rem;">
+                <h2>Organization Details</h2>
+                <table id="organizationTable">
+                    <thead>
+                        <tr>
+                            <th onclick="sortTable(0)">Organization <i class="fas fa-sort"></i></th>
+                            <th onclick="sortTable(1)">Count <i class="fas fa-sort"></i></th>
+                            <th onclick="sortTable(2)">Percentage of Total <i class="fas fa-sort"></i></th>
+                            <th onclick="sortTable(3)">Percentage of Available <i class="fas fa-sort"></i></th>
+                        </tr>
+                    </thead>
+                    <tbody id="tableBody"></tbody>
+                </table>
+            </div>
+        </div>
+        
+        <!-- Export Section -->
+        <div class="visualization-section" id="export-section" style="display: none;">
+            <h2>Export Options</h2>
+            <div style="text-align: center; padding: 2rem;">
+                <button class="btn btn-primary" onclick="exportToPDF()">
+                    <i class="fas fa-file-pdf"></i> Export as PDF
+                </button>
+                <button class="btn btn-primary" onclick="exportToCSV()">
+                    <i class="fas fa-file-csv"></i> Export Data as CSV
+                </button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Common JavaScript -->
+    <script src="../assets/js/common.js"></script>
+    
+    <!-- Page-specific JavaScript -->
+    <script>
+        let availabilityChart = null;
+        let organizationChart = null;
+        let organizationData = {};
+        let dataQualityStats = {};
+        
+        // Process data specific to this visualization
+        function processData(data) {
+            originalData = data;
+            filteredData = data;
+            
+            processOrganizationData(data);
+            
+            hideLoading();
+            showSuccess(`Successfully loaded ${data.length} ADR records`);
+            
+            // Show data quality warning
+            showDataQualityWarning();
+            
+            // Show sections
+            showSections();
+            
+            // Generate visualizations
+            generateVisualization();
+            updateSummaryStats();
+        }
+        
+        function processOrganizationData(data) {
+            const organizations = {};
+            let missingCount = 0;
+            let totalCount = data.length;
+            
+            data.forEach(row => {
+                const org = row['Organisation (reporter)'];
+                
+                if (!org || org === '' || org === null || org === 'null') {
+                    missingCount++;
+                } else {
+                    // Clean the organization name
+                    const cleanOrg = org.toString().trim().replace(/_x000D_/g, '');
+                    
+                    if (cleanOrg) {
+                        if (!organizations[cleanOrg]) {
+                            organizations[cleanOrg] = { count: 0, color: getColorForOrg(cleanOrg) };
+                        }
+                        organizations[cleanOrg].count++;
+                    } else {
+                        missingCount++;
+                    }
+                }
+            });
+            
+            // Calculate percentages
+            const availableCount = totalCount - missingCount;
+            Object.keys(organizations).forEach(key => {
+                organizations[key].percentageOfTotal = totalCount > 0 ? 
+                    ((organizations[key].count / totalCount) * 100).toFixed(1) : 0;
+                organizations[key].percentageOfAvailable = availableCount > 0 ? 
+                    ((organizations[key].count / availableCount) * 100).toFixed(1) : 0;
+            });
+            
+            organizationData = organizations;
+            dataQualityStats = {
+                total: totalCount,
+                missing: missingCount,
+                available: availableCount,
+                missingPercentage: ((missingCount / totalCount) * 100).toFixed(1)
+            };
+        }
+        
+        function getColorForOrg(orgName) {
+            // Assign colors based on organization type if identifiable
+            const lowerOrg = orgName.toLowerCase();
+            if (lowerOrg.includes('hospital') || lowerOrg.includes('clinic')) {
+                return '#2196F3'; // Blue for healthcare facilities
+            } else if (lowerOrg.includes('pharma')) {
+                return '#4CAF50'; // Green for pharmaceutical
+            } else if (lowerOrg.includes('umc')) {
+                return '#FF9800'; // Orange for monitoring centers
+            } else {
+                return '#9C27B0'; // Purple for others
+            }
+        }
+        
+        function showDataQualityWarning() {
+            const warningEl = document.getElementById('data-warning');
+            const percentageEl = document.getElementById('missing-percentage');
+            
+            warningEl.style.display = 'flex';
+            percentageEl.textContent = dataQualityStats.missingPercentage;
+        }
+        
+        // Generate visualization
+        function generateVisualization() {
+            createAvailabilityChart();
+            createOrganizationChart();
+            displayDataTable();
+        }
+        
+        function createAvailabilityChart() {
+            const ctx = document.getElementById('availability-chart').getContext('2d');
+            
+            if (availabilityChart) {
+                availabilityChart.destroy();
+            }
+            
+            availabilityChart = new Chart(ctx, {
+                type: 'doughnut',
+                data: {
+                    labels: ['Data Available', 'No Organization Data'],
+                    datasets: [{
+                        data: [dataQualityStats.available, dataQualityStats.missing],
+                        backgroundColor: ['#4CAF50', '#f44336'],
+                        borderWidth: 2,
+                        borderColor: '#ffffff'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'bottom',
+                            labels: {
+                                padding: 15,
+                                usePointStyle: true,
+                                font: {
+                                    size: 12
+                                }
+                            }
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    const label = context.label || '';
+                                    const value = context.parsed;
+                                    const percentage = ((value / dataQualityStats.total) * 100).toFixed(1);
+                                    return `${label}: ${value} (${percentage}%)`;
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+        
+        function createOrganizationChart() {
+            const ctx = document.getElementById('organization-chart').getContext('2d');
+            
+            const labels = Object.keys(organizationData);
+            const data = labels.map(label => organizationData[label].count);
+            const colors = labels.map(label => organizationData[label].color);
+            
+            if (organizationChart) {
+                organizationChart.destroy();
+            }
+            
+            if (labels.length === 0) {
+                // No data available
+                ctx.font = '16px Arial';
+                ctx.textAlign = 'center';
+                ctx.fillStyle = '#666';
+                ctx.fillText('No organization data available', ctx.canvas.width / 2, ctx.canvas.height / 2);
+                return;
+            }
+            
+            organizationChart = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: 'Number of Reports',
+                        data: data,
+                        backgroundColor: colors,
+                        borderWidth: 2,
+                        borderColor: '#ffffff'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            display: false
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    const label = context.label || '';
+                                    const value = context.parsed.y;
+                                    const org = organizationData[label];
+                                    return [
+                                        `Count: ${value}`,
+                                        `% of Total: ${org.percentageOfTotal}%`,
+                                        `% of Available: ${org.percentageOfAvailable}%`
+                                    ];
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            ticks: {
+                                stepSize: 1,
+                                precision: 0
+                            },
+                            title: {
+                                display: true,
+                                text: 'Number of Reports'
+                            }
+                        },
+                        x: {
+                            title: {
+                                display: true,
+                                text: 'Organization'
+                            },
+                            ticks: {
+                                autoSkip: false,
+                                maxRotation: 45,
+                                minRotation: 45
+                            }
+                        }
+                    }
+                }
+            });
+        }
+        
+        // Update summary statistics
+        function updateSummaryStats() {
+            const summaryCards = document.getElementById('summary-cards');
+            summaryCards.innerHTML = '';
+            
+            // Total Cases
+            const totalCard = document.createElement('div');
+            totalCard.className = 'summary-card';
+            totalCard.innerHTML = `
+                <div class="card-icon"><i class="fas fa-file-medical"></i></div>
+                <div class="card-content">
+                    <div class="card-title">Total Cases</div>
+                    <div class="card-value">${dataQualityStats.total}</div>
+                </div>
+            `;
+            summaryCards.appendChild(totalCard);
+            
+            // Cases with Organization Data
+            const availableCard = document.createElement('div');
+            availableCard.className = 'summary-card';
+            availableCard.innerHTML = `
+                <div class="card-icon"><i class="fas fa-building"></i></div>
+                <div class="card-content">
+                    <div class="card-title">With Organization Data</div>
+                    <div class="card-value">${dataQualityStats.available}</div>
+                </div>
+            `;
+            summaryCards.appendChild(availableCard);
+            
+            // Missing Data
+            const missingCard = document.createElement('div');
+            missingCard.className = 'summary-card';
+            missingCard.innerHTML = `
+                <div class="card-icon"><i class="fas fa-question-circle"></i></div>
+                <div class="card-content">
+                    <div class="card-title">Missing Organization</div>
+                    <div class="card-value">${dataQualityStats.missing}</div>
+                </div>
+            `;
+            summaryCards.appendChild(missingCard);
+            
+            // Unique Organizations
+            const uniqueCard = document.createElement('div');
+            uniqueCard.className = 'summary-card';
+            uniqueCard.innerHTML = `
+                <div class="card-icon"><i class="fas fa-sitemap"></i></div>
+                <div class="card-content">
+                    <div class="card-title">Unique Organizations</div>
+                    <div class="card-value">${Object.keys(organizationData).length}</div>
+                </div>
+            `;
+            summaryCards.appendChild(uniqueCard);
+        }
+        
+        function displayDataTable() {
+            const tbody = document.getElementById('tableBody');
+            tbody.innerHTML = '';
+            
+            // Add row for missing data
+            const missingRow = tbody.insertRow();
+            missingRow.style.fontStyle = 'italic';
+            missingRow.style.color = '#666';
+            missingRow.insertCell(0).textContent = 'No Organization Data';
+            missingRow.insertCell(1).textContent = dataQualityStats.missing;
+            missingRow.insertCell(2).textContent = dataQualityStats.missingPercentage + '%';
+            missingRow.insertCell(3).textContent = 'N/A';
+            
+            // Add rows for organizations
+            Object.entries(organizationData)
+                .sort((a, b) => b[1].count - a[1].count)
+                .forEach(([org, data]) => {
+                    const row = tbody.insertRow();
+                    row.insertCell(0).textContent = org;
+                    row.insertCell(1).textContent = data.count;
+                    row.insertCell(2).textContent = data.percentageOfTotal + '%';
+                    row.insertCell(3).textContent = data.percentageOfAvailable + '%';
+                });
+        }
+        
+        function sortTable(columnIndex) {
+            const table = document.getElementById('organizationTable');
+            const tbody = table.querySelector('tbody');
+            const rows = Array.from(tbody.rows);
+            
+            // Separate the missing data row from others
+            const missingRow = rows.shift();
+            
+            rows.sort((a, b) => {
+                const aValue = columnIndex === 0 ? a.cells[columnIndex].textContent :
+                              parseFloat(a.cells[columnIndex].textContent);
+                const bValue = columnIndex === 0 ? b.cells[columnIndex].textContent :
+                              parseFloat(b.cells[columnIndex].textContent);
+                
+                if (columnIndex === 0) {
+                    return aValue.localeCompare(bValue);
+                } else {
+                    return bValue - aValue;
+                }
+            });
+            
+            tbody.innerHTML = '';
+            tbody.appendChild(missingRow);
+            rows.forEach(row => tbody.appendChild(row));
+        }
+        
+        // Page-specific export functions
+        function downloadChartImage() {
+            // For this visualization, we'll capture both charts
+            const container = document.querySelector('.split-visualization');
+            html2canvas(container).then(canvas => {
+                const link = document.createElement('a');
+                link.download = 'adr_reporter_organization_charts.png';
+                link.href = canvas.toDataURL();
+                link.click();
+            });
+        }
+        
+        function maximizeChart() {
+            // For this visualization, maximize the organization distribution chart
+            if (organizationChart) {
+                createMaximizeModal(organizationChart, 'Organization Distribution');
+            }
+        }
+        
+        function exportToCSV() {
+            const headers = ['Organization', 'Count', 'Percentage of Total', 'Percentage of Available'];
+            const rows = [
+                ['No Organization Data', dataQualityStats.missing, dataQualityStats.missingPercentage + '%', 'N/A']
+            ];
+            
+            Object.entries(organizationData).forEach(([org, data]) => {
+                rows.push([org, data.count, data.percentageOfTotal + '%', data.percentageOfAvailable + '%']);
+            });
+            
+            downloadCSV(headers, rows, 'adr_reporter_organization.csv');
+        }
+        
+        function exportToPDF() {
+            showLoading();
+            
+            const { jsPDF } = window.jspdf;
+            const pdf = new jsPDF();
+            
+            // Add title
+            pdf.setFontSize(20);
+            pdf.text('ADR Reporter Organization Analysis', 20, 20);
+            
+            // Add date
+            pdf.setFontSize(12);
+            pdf.text(`Generated on: ${new Date().toLocaleDateString()}`, 20, 30);
+            
+            // Add data quality warning
+            pdf.setFontSize(11);
+            pdf.setTextColor(255, 0, 0);
+            pdf.text(`WARNING: ${dataQualityStats.missingPercentage}% of records have no organization data`, 20, 40);
+            pdf.setTextColor(0, 0, 0);
+            
+            // Add summary stats
+            pdf.setFontSize(14);
+            pdf.text('Summary Statistics:', 20, 55);
+            
+            pdf.setFontSize(11);
+            pdf.text(`Total Cases: ${dataQualityStats.total}`, 30, 65);
+            pdf.text(`Cases with Organization Data: ${dataQualityStats.available}`, 30, 73);
+            pdf.text(`Missing Organization Data: ${dataQualityStats.missing}`, 30, 81);
+            pdf.text(`Unique Organizations: ${Object.keys(organizationData).length}`, 30, 89);
+            
+            // Add table
+            let yPosition = 105;
+            pdf.setFontSize(12);
+            pdf.text('Organization Breakdown:', 20, yPosition);
+            
+            yPosition += 10;
+            pdf.setFontSize(10);
+            
+            // Add missing data first
+            pdf.text(`No Organization Data: ${dataQualityStats.missing} (${dataQualityStats.missingPercentage}%)`, 30, yPosition);
+            yPosition += 8;
+            
+            Object.entries(organizationData)
+                .sort((a, b) => b[1].count - a[1].count)
+                .forEach(([org, data]) => {
+                    pdf.text(`${org}: ${data.count} (${data.percentageOfTotal}% of total)`, 30, yPosition);
+                    yPosition += 8;
+                });
+            
+            // Add charts if possible
+            if (availabilityChart) {
+                html2canvas(document.querySelector('.split-visualization')).then(canvas => {
+                    const imgData = canvas.toDataURL('image/png');
+                    pdf.addPage();
+                    pdf.text('Data Visualization', 20, 20);
+                    pdf.addImage(imgData, 'PNG', 20, 30, 170, 80);
+                    
+                    // Save PDF
+                    pdf.save('adr_reporter_organization_analysis.pdf');
+                    hideLoading();
+                    showSuccess('PDF exported successfully!');
+                });
+            } else {
+                pdf.save('adr_reporter_organization_analysis.pdf');
+                hideLoading();
+                showSuccess('PDF exported successfully!');
+            }
+        }
+        
+        // Load html2canvas for combined chart export
+        const script = document.createElement('script');
+        script.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js';
+        document.head.appendChild(script);
+    </script>
+</body>
+</html>

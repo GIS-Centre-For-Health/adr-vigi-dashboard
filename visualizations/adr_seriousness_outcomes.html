@@ -1,0 +1,667 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ADR Seriousness Outcomes Analysis - VigiFlow</title>
+    
+    <!-- External Libraries -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.17.0/xlsx.full.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    
+    <!-- Common Styles -->
+    <link rel="stylesheet" href="../assets/css/common.css">
+    
+    <!-- Page-specific styles -->
+    <style>
+        .combinations-table {
+            max-height: 400px;
+            overflow-y: auto;
+            margin-top: 1rem;
+        }
+        
+        .combination-row {
+            background: #f8f9fa;
+            padding: 0.5rem;
+            margin: 0.25rem 0;
+            border-radius: 4px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .combination-conditions {
+            flex: 1;
+            font-size: 0.9rem;
+        }
+        
+        .combination-count {
+            font-weight: bold;
+            color: #2a5298;
+            margin-left: 1rem;
+        }
+        
+        .view-toggle {
+            margin: 1rem 0;
+            text-align: center;
+        }
+        
+        .view-toggle button {
+            margin: 0 0.5rem;
+        }
+        
+        .active-view {
+            background-color: #2a5298;
+            color: white;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>ADR Seriousness Outcomes Analysis</h1>
+        <p>Analysis of specific seriousness outcomes from Adverse Drug Reaction Reports</p>
+    </div>
+    
+    <div class="container">
+        <!-- Upload Section -->
+        <div class="upload-section">
+            <h2>Upload ADR Data File</h2>
+            <p>Select an Excel file (.xlsx, .xls) containing ADR data from VigiFlow</p>
+            <div class="upload-area" id="upload-area">
+                <i class="fas fa-cloud-upload-alt" style="font-size: 3rem; color: #2a5298;"></i>
+                <p style="margin: 1rem 0;">Drag and drop your file here or click to browse</p>
+                <input type="file" id="file-input" accept=".xlsx,.xls">
+            </div>
+            <div id="file-info" style="margin-top: 1rem; display: none;">
+                <p>Selected file: <strong id="file-name"></strong></p>
+            </div>
+        </div>
+        
+        <!-- Loading -->
+        <div class="loading" id="loading">
+            <div class="spinner"></div>
+            <p>Processing your data...</p>
+        </div>
+        
+        <!-- Messages -->
+        <div class="message success" id="success-message"></div>
+        <div class="message error" id="error-message"></div>
+        
+        <!-- Filter Section -->
+        <div class="filter-section" id="filter-section">
+            <h2>Filter Data</h2>
+            <div class="filter-grid">
+                <div class="filter-group">
+                    <label for="year-filter">Year</label>
+                    <select id="year-filter">
+                        <option value="">All Years</option>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label for="date-from">Date From</label>
+                    <input type="date" id="date-from">
+                </div>
+                <div class="filter-group">
+                    <label for="date-to">Date To</label>
+                    <input type="date" id="date-to">
+                </div>
+            </div>
+            <div style="margin-top: 1rem;">
+                <button class="btn btn-primary" onclick="applyFilters()">Apply Filters</button>
+                <button class="btn btn-secondary" onclick="resetFilters()">Reset</button>
+            </div>
+        </div>
+        
+        <!-- Summary Statistics -->
+        <div class="summary-section" id="summary-section">
+            <h2>Summary Statistics</h2>
+            <div class="stats-grid" id="stats-grid">
+                <!-- Stats will be populated here -->
+            </div>
+        </div>
+        
+        <!-- View Toggle -->
+        <div class="visualization-section view-toggle" id="view-toggle-section" style="display: none;">
+            <button class="btn btn-primary active-view" id="outcomes-view-btn" onclick="showOutcomesView()">
+                <i class="fas fa-chart-bar"></i> Outcomes by Type
+            </button>
+            <button class="btn btn-secondary" id="combinations-view-btn" onclick="showCombinationsView()">
+                <i class="fas fa-th-list"></i> Combination Patterns
+            </button>
+        </div>
+        
+        <!-- Outcomes Visualization Section -->
+        <div class="visualization-section" id="outcomes-visualization-section">
+            <div class="chart-header">
+                <h2 class="chart-title">Seriousness Outcomes by Type</h2>
+                <div class="chart-actions">
+                    <button class="chart-btn" onclick="downloadChartImage()">
+                        <i class="fas fa-download"></i> Download
+                    </button>
+                    <button class="chart-btn" onclick="maximizeChart()">
+                        <i class="fas fa-expand"></i> Maximize
+                    </button>
+                </div>
+            </div>
+            <div class="chart-container" style="height: 500px; margin: 2rem auto;">
+                <canvas id="outcomes-chart"></canvas>
+            </div>
+            
+            <div class="info-section" style="margin-top: 2rem; padding: 1rem; background: #f0f4f8; border-radius: 8px;">
+                <h4>Note</h4>
+                <p style="margin: 0.5rem 0;">A single ADR case may have multiple seriousness outcomes. The bars show how many cases have each type of outcome, with overlaps allowed.</p>
+            </div>
+        </div>
+        
+        <!-- Combinations View Section -->
+        <div class="visualization-section" id="combinations-visualization-section" style="display: none;">
+            <div class="chart-header">
+                <h2 class="chart-title">Seriousness Outcome Combinations</h2>
+            </div>
+            <div id="combinations-content">
+                <!-- Combinations will be populated here -->
+            </div>
+        </div>
+        
+        <!-- Export Section -->
+        <div class="visualization-section" id="export-section" style="display: none;">
+            <h2>Export Options</h2>
+            <div style="text-align: center; padding: 2rem;">
+                <button class="btn btn-primary" onclick="exportToPDF()">
+                    <i class="fas fa-file-pdf"></i> Export as PDF
+                </button>
+                <button class="btn btn-primary" onclick="exportToCSV()">
+                    <i class="fas fa-file-csv"></i> Export Data as CSV
+                </button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Common JavaScript -->
+    <script src="../assets/js/common.js"></script>
+    
+    <!-- Page-specific JavaScript -->
+    <script>
+        let outcomesChart = null;
+        let currentView = 'outcomes';
+        const dateField = '_parsedDate';
+        
+        // Define seriousness outcome categories
+        const outcomeCategories = {
+            'Results in death': { color: '#e74c3c', order: 1 },
+            'Life threatening': { color: '#e67e22', order: 2 },
+            'Caused / prolonged hospitalisation': { color: '#f39c12', order: 3 },
+            'Disabling / incapacitating': { color: '#9b59b6', order: 4 },
+            'Congenital anomaly / birth defect': { color: '#3498db', order: 5 },
+            'Other medically important condition': { color: '#16a085', order: 6 },
+            'Unknown / Not Serious': { color: '#95a5a6', order: 7 }  // Gray for unknown/blank
+        };
+        
+        // Store processed outcomes data
+        let outcomesData = {};
+        let combinationsData = [];
+        
+        // Clean seriousness value from Excel formatting issues
+        function cleanSeriousnessValue(value) {
+            if (!value || value === null || value === undefined) {
+                return null;
+            }
+            
+            // Convert to string and clean
+            let cleaned = value.toString()
+                .replace(/_x000D_/g, '')
+                .replace(/\r/g, '')
+                .replace(/\n+/g, ' ')
+                .trim();
+            
+            // Check if it's just whitespace or empty
+            if (cleaned === '' || cleaned === '_' || cleaned.length === 0) {
+                return null;
+            }
+            
+            // Remove duplicate phrases (e.g., "Results in deathResults in death")
+            cleaned = cleaned.replace(/Results in death\s*Results in death/gi, 'Results in death');
+            
+            return cleaned;
+        }
+        
+        // Parse seriousness outcomes from a cell value
+        function parseSeriousnessOutcomes(value) {
+            const cleanedValue = cleanSeriousnessValue(value);
+            if (!cleanedValue) return [];
+            
+            const outcomes = [];
+            
+            // Check for each known outcome category
+            for (const category in outcomeCategories) {
+                if (cleanedValue.toLowerCase().includes(category.toLowerCase())) {
+                    outcomes.push(category);
+                }
+            }
+            
+            return outcomes;
+        }
+        
+        // Process data specific to this visualization
+        function processData(data) {
+            try {
+                originalData = data;
+                filteredData = data;
+                
+                // Parse dates for filtering (using Initial received date)
+                originalData.forEach(row => {
+                    if (row['Initial received date']) {
+                        row._parsedDate = parseInitialReceivedDate(row['Initial received date']);
+                    }
+                });
+                
+                hideLoading();
+                showSuccess(`Successfully loaded ${data.length} ADR records`);
+                
+                // Show sections
+                document.getElementById('filter-section').style.display = 'block';
+                document.getElementById('summary-section').style.display = 'block';
+                document.getElementById('outcomes-visualization-section').style.display = 'block';
+                document.getElementById('export-section').style.display = 'block';
+                document.getElementById('view-toggle-section').style.display = 'block';
+                
+                // Populate filters
+                populateYearFilter(originalData, dateField);
+                
+                // Generate visualizations
+                analyzeOutcomes();
+                updateSummaryStats();
+            } catch (error) {
+                console.error('Error in processData:', error);
+                hideLoading();
+                showError('Error processing data: ' + error.message);
+            }
+        }
+        
+        // Analyze outcomes and combinations
+        function analyzeOutcomes() {
+            try {
+                // Reset data
+                outcomesData = {};
+                combinationsData = [];
+                const combinationsMap = {};
+                
+                // Initialize outcome counts
+                for (const category in outcomeCategories) {
+                    outcomesData[category] = 0;
+                }
+                
+                // Process each record
+                filteredData.forEach(row => {
+                    const outcomes = parseSeriousnessOutcomes(row['Seriousness']);
+                    
+                    if (outcomes.length > 0) {
+                        // Count individual outcomes
+                        outcomes.forEach(outcome => {
+                            outcomesData[outcome]++;
+                        });
+                        
+                        // Track combinations
+                        const combinationKey = outcomes.sort().join(' + ');
+                        if (combinationsMap[combinationKey]) {
+                            combinationsMap[combinationKey]++;
+                        } else {
+                            combinationsMap[combinationKey] = 1;
+                        }
+                    } else {
+                        // Count cases with no seriousness outcomes as Unknown
+                        outcomesData['Unknown / Not Serious']++;
+                        
+                        // Track in combinations as well
+                        if (combinationsMap['Unknown / Not Serious']) {
+                            combinationsMap['Unknown / Not Serious']++;
+                        } else {
+                            combinationsMap['Unknown / Not Serious'] = 1;
+                        }
+                    }
+                });
+                
+                // Convert combinations map to array and sort by count
+                combinationsData = Object.entries(combinationsMap)
+                    .map(([combination, count]) => ({ combination, count }))
+                    .sort((a, b) => b.count - a.count);
+                
+                // Update the appropriate view
+                if (currentView === 'outcomes') {
+                    generateOutcomesChart();
+                } else {
+                    generateCombinationsView();
+                }
+            } catch (error) {
+                console.error('Error in analyzeOutcomes:', error);
+                showError('Error analyzing outcomes: ' + error.message);
+            }
+        }
+        
+        // Generate horizontal bar chart for outcomes
+        function generateOutcomesChart() {
+            // Prepare data for chart
+            const sortedOutcomes = Object.entries(outcomesData)
+                .filter(([outcome, count]) => count > 0)
+                .sort((a, b) => outcomeCategories[a[0]].order - outcomeCategories[b[0]].order);
+            
+            const labels = sortedOutcomes.map(([outcome, ]) => outcome);
+            const data = sortedOutcomes.map(([, count]) => count);
+            const colors = sortedOutcomes.map(([outcome, ]) => outcomeCategories[outcome].color);
+            
+            // Total cases is all filtered data since we're now including unknowns
+            const totalCases = filteredData.length;
+            
+            // Chart configuration
+            const config = {
+                type: 'bar',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        data: data,
+                        backgroundColor: colors,
+                        borderColor: colors,
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    indexAxis: 'y', // Horizontal bars
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        title: {
+                            display: true,
+                            text: `Total ADR Cases: ${totalCases.toLocaleString()}`,
+                            font: {
+                                size: 14,
+                                weight: 'normal'
+                            },
+                            padding: 20
+                        },
+                        legend: {
+                            display: false
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    const value = context.raw;
+                                    const percentage = ((value / totalCases) * 100).toFixed(1);
+                                    return [
+                                        `Cases: ${value}`,
+                                        `${percentage}% of all cases`
+                                    ];
+                                }
+                            },
+                            backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                            padding: 12
+                        }
+                    },
+                    scales: {
+                        x: {
+                            beginAtZero: true,
+                            title: {
+                                display: true,
+                                text: 'Number of Cases'
+                            },
+                            ticks: {
+                                precision: 0
+                            }
+                        },
+                        y: {
+                            ticks: {
+                                autoSkip: false,
+                                font: {
+                                    size: 12
+                                }
+                            }
+                        }
+                    }
+                }
+            };
+            
+            // Destroy existing chart if any
+            if (outcomesChart) {
+                outcomesChart.destroy();
+            }
+            
+            // Create new chart
+            const ctx = document.getElementById('outcomes-chart').getContext('2d');
+            outcomesChart = new Chart(ctx, config);
+        }
+        
+        // Generate combinations view
+        function generateCombinationsView() {
+            const container = document.getElementById('combinations-content');
+            container.innerHTML = '';
+            
+            // Add summary
+            const summary = document.createElement('div');
+            summary.className = 'info-section';
+            summary.style.marginBottom = '2rem';
+            summary.innerHTML = `
+                <h4>Combination Patterns</h4>
+                <p>This shows how seriousness outcomes occur together. ${combinationsData.length} unique combinations found.</p>
+            `;
+            container.appendChild(summary);
+            
+            // Create combinations list
+            const combinationsDiv = document.createElement('div');
+            combinationsDiv.className = 'combinations-table';
+            
+            combinationsData.forEach(({ combination, count }) => {
+                const row = document.createElement('div');
+                row.className = 'combination-row';
+                row.innerHTML = `
+                    <div class="combination-conditions">${combination}</div>
+                    <div class="combination-count">${count} case${count > 1 ? 's' : ''}</div>
+                `;
+                combinationsDiv.appendChild(row);
+            });
+            
+            container.appendChild(combinationsDiv);
+        }
+        
+        // Apply filters
+        function applyFilters() {
+            filteredData = applyDateFilters(originalData, dateField);
+            analyzeOutcomes();
+            updateSummaryStats();
+            showSuccess(`Filters applied. Showing ${filteredData.length} records.`);
+        }
+        
+        // Reset filters
+        function resetFilters() {
+            document.getElementById('year-filter').value = '';
+            document.getElementById('date-from').value = '';
+            document.getElementById('date-to').value = '';
+            
+            filteredData = originalData;
+            analyzeOutcomes();
+            updateSummaryStats();
+            showSuccess('Filters reset.');
+        }
+        
+        // Update summary statistics
+        function updateSummaryStats() {
+            const statsGrid = document.getElementById('stats-grid');
+            statsGrid.innerHTML = '';
+            
+            // Total cases
+            addStatCard(statsGrid, 'Total ADR Cases', filteredData.length);
+            
+            // Cases with specific seriousness outcomes (not unknown)
+            const withSpecificOutcomes = filteredData.filter(row => 
+                parseSeriousnessOutcomes(row['Seriousness']).length > 0
+            ).length;
+            const withSpecificPercentage = filteredData.length > 0 ? 
+                ((withSpecificOutcomes / filteredData.length) * 100).toFixed(1) : '0.0';
+            addStatCard(statsGrid, 'Cases with Specific Outcomes', 
+                `${withSpecificOutcomes} (${withSpecificPercentage}%)`);
+            
+            // Most common outcome
+            const mostCommon = Object.entries(outcomesData)
+                .filter(([, count]) => count > 0)
+                .sort((a, b) => b[1] - a[1])[0];
+            
+            if (mostCommon) {
+                addStatCard(statsGrid, 'Most Common Outcome', 
+                    `${mostCommon[0]} (${mostCommon[1]} cases)`);
+            }
+            
+            // Cases with multiple outcomes
+            const multipleOutcomes = combinationsData
+                .filter(({ combination }) => combination.includes('+'))
+                .reduce((sum, { count }) => sum + count, 0);
+            addStatCard(statsGrid, 'Cases with Multiple Outcomes', multipleOutcomes);
+        }
+        
+        // View switching functions
+        function showOutcomesView() {
+            currentView = 'outcomes';
+            document.getElementById('outcomes-view-btn').className = 'btn btn-primary active-view';
+            document.getElementById('combinations-view-btn').className = 'btn btn-secondary';
+            document.getElementById('outcomes-visualization-section').style.display = 'block';
+            document.getElementById('combinations-visualization-section').style.display = 'none';
+            generateOutcomesChart();
+        }
+        
+        function showCombinationsView() {
+            currentView = 'combinations';
+            document.getElementById('outcomes-view-btn').className = 'btn btn-secondary';
+            document.getElementById('combinations-view-btn').className = 'btn btn-primary active-view';
+            document.getElementById('outcomes-visualization-section').style.display = 'none';
+            document.getElementById('combinations-visualization-section').style.display = 'block';
+            generateCombinationsView();
+        }
+        
+        // Page-specific export functions
+        function downloadChartImage() {
+            if (currentView === 'outcomes') {
+                downloadChart(outcomesChart, 'adr_seriousness_outcomes.png');
+            } else {
+                showError('Chart download is only available for the Outcomes view');
+            }
+        }
+        
+        function maximizeChart() {
+            if (currentView === 'outcomes') {
+                createMaximizeModal(outcomesChart, 'Seriousness Outcomes by Type');
+            } else {
+                showError('Chart maximize is only available for the Outcomes view');
+            }
+        }
+        
+        function exportToCSV() {
+            let csvContent = '';
+            
+            if (currentView === 'outcomes') {
+                // Export outcomes data
+                csvContent = 'Seriousness Outcome,Count,Percentage of All Cases\n';
+                
+                const totalCases = filteredData.length;
+                
+                Object.entries(outcomesData)
+                    .filter(([, count]) => count > 0)
+                    .sort((a, b) => outcomeCategories[a[0]].order - outcomeCategories[b[0]].order)
+                    .forEach(([outcome, count]) => {
+                        const percentage = totalCases > 0 ? 
+                            ((count / totalCases) * 100).toFixed(1) : '0.0';
+                        csvContent += `"${outcome}",${count},${percentage}%\n`;
+                    });
+                    
+                csvContent += `\nTotal ADR Cases,${totalCases},\n`;
+            } else {
+                // Export combinations data
+                csvContent = 'Outcome Combination,Count\n';
+                
+                combinationsData.forEach(({ combination, count }) => {
+                    csvContent += `"${combination}",${count}\n`;
+                });
+            }
+            
+            // Create and download file
+            const blob = new Blob([csvContent], { type: 'text/csv' });
+            const url = window.URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = `adr_seriousness_${currentView}_data.csv`;
+            link.click();
+            
+            window.URL.revokeObjectURL(url);
+            showSuccess('CSV exported successfully!');
+        }
+        
+        function exportToPDF() {
+            showLoading();
+            
+            const { jsPDF } = window.jspdf;
+            const pdf = new jsPDF();
+            
+            // Add title
+            pdf.setFontSize(20);
+            pdf.text('ADR Seriousness Outcomes Analysis', 20, 20);
+            
+            // Add date
+            pdf.setFontSize(12);
+            pdf.text(`Generated on: ${new Date().toLocaleDateString()}`, 20, 30);
+            
+            // Add summary stats
+            pdf.setFontSize(14);
+            pdf.text('Summary Statistics:', 20, 45);
+            
+            const withSpecificOutcomes = filteredData.filter(row => 
+                parseSeriousnessOutcomes(row['Seriousness']).length > 0
+            ).length;
+            
+            pdf.setFontSize(11);
+            pdf.text(`Total ADR Cases: ${filteredData.length}`, 30, 55);
+            pdf.text(`Cases with Specific Outcomes: ${withSpecificOutcomes}`, 30, 65);
+            pdf.text(`Cases with Unknown/Not Serious: ${filteredData.length - withSpecificOutcomes}`, 30, 75);
+            
+            if (currentView === 'outcomes') {
+                // Add outcomes breakdown
+                let yPos = 90;
+                pdf.text('Outcomes Breakdown:', 30, yPos);
+                
+                const totalCases = filteredData.length;
+                
+                Object.entries(outcomesData)
+                    .filter(([, count]) => count > 0)
+                    .sort((a, b) => outcomeCategories[a[0]].order - outcomeCategories[b[0]].order)
+                    .forEach(([outcome, count]) => {
+                        yPos += 10;
+                        const percentage = totalCases > 0 ? 
+                            ((count / totalCases) * 100).toFixed(1) : '0.0';
+                        pdf.text(`${outcome}: ${count} (${percentage}%)`, 40, yPos);
+                    });
+                
+                // Add chart if available
+                if (outcomesChart) {
+                    const chartImage = outcomesChart.toBase64Image();
+                    pdf.addImage(chartImage, 'PNG', 20, yPos + 20, 170, 100);
+                }
+            } else {
+                // Add top combinations
+                let yPos = 90;
+                pdf.text('Top Outcome Combinations:', 30, yPos);
+                
+                combinationsData.slice(0, 10).forEach(({ combination, count }) => {
+                    yPos += 10;
+                    // Truncate long combinations
+                    const truncated = combination.length > 50 ? 
+                        combination.substring(0, 47) + '...' : combination;
+                    pdf.text(`${truncated}: ${count}`, 40, yPos);
+                });
+            }
+            
+            // Save PDF
+            pdf.save('adr_seriousness_outcomes_analysis.pdf');
+            
+            hideLoading();
+            showSuccess('PDF exported successfully!');
+        }
+    </script>
+</body>
+</html>

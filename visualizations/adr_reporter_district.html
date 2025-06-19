@@ -1,0 +1,473 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ADR Reporter District Visualization - VigiFlow</title>
+    
+    <!-- External CSS -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <link rel="stylesheet" href="../assets/css/common.css">
+    
+    <!-- Custom CSS for this visualization -->
+    <style>
+        .data-quality-warning {
+            background-color: #fff3cd;
+            border: 1px solid #ffeaa7;
+            color: #856404;
+            padding: 12px 20px;
+            margin: 20px 0;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-weight: 500;
+        }
+        
+        .data-quality-warning i {
+            font-size: 20px;
+            color: #f39c12;
+        }
+        
+        .dual-chart-container {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 30px;
+            margin-top: 30px;
+        }
+        
+        .chart-wrapper {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        
+        .chart-wrapper h3 {
+            margin: 0 0 20px 0;
+            color: #333;
+            font-size: 18px;
+            text-align: center;
+        }
+        
+        @media (max-width: 968px) {
+            .dual-chart-container {
+                grid-template-columns: 1fr;
+            }
+        }
+        
+        .data-note {
+            background-color: #e3f2fd;
+            border-left: 4px solid #2196F3;
+            padding: 10px 15px;
+            margin: 15px 0;
+            font-size: 14px;
+            color: #1565C0;
+        }
+    </style>
+</head>
+<body>
+    <!-- Header -->
+    <header class="header">
+        <div class="header-content">
+            <div>
+                <h1><i class="fas fa-map-marker-alt"></i> ADR Reporter District Analysis</h1>
+                <p>Analysis of Adverse Drug Reaction reports by reporter's district location</p>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Container -->
+    <div class="container">
+        <!-- Upload Section -->
+        <section class="upload-section" id="upload-section">
+            <h2><i class="fas fa-file-excel"></i> Upload VigiFlow Excel File</h2>
+            <div class="upload-area" id="upload-area">
+                <input type="file" id="file-input" accept=".xlsx,.xls" hidden>
+                <i class="fas fa-cloud-upload-alt upload-icon"></i>
+                <p class="upload-text">Drag and drop your Excel file here or click to browse</p>
+                <p class="upload-subtext">Supported formats: .xlsx, .xls</p>
+            </div>
+        </section>
+
+        <!-- Summary Section (Hidden by default) -->
+        <section class="summary-section" id="summary-section" style="display: none;">
+            <h2><i class="fas fa-chart-pie"></i> Summary Statistics</h2>
+            <div class="stats-grid" id="stats-container">
+                <!-- Stats will be added dynamically -->
+            </div>
+        </section>
+
+        <!-- Data Quality Warning (Hidden by default) -->
+        <div class="data-quality-warning" id="data-warning" style="display: none;">
+            <i class="fas fa-exclamation-triangle"></i>
+            <span id="warning-text"></span>
+        </div>
+
+        <!-- Visualization Section (Hidden by default) -->
+        <section class="visualization-section" id="visualization-section" style="display: none;">
+            <h2><i class="fas fa-chart-bar"></i> District Distribution Analysis</h2>
+            
+            <div class="chart-controls">
+                <button class="btn btn-secondary" id="toggle-percentage">
+                    <i class="fas fa-percent"></i> Show Percentage
+                </button>
+                <button class="btn btn-secondary" id="download-chart">
+                    <i class="fas fa-download"></i> Download Chart
+                </button>
+                <button class="btn btn-secondary" id="download-csv">
+                    <i class="fas fa-file-csv"></i> Export CSV
+                </button>
+            </div>
+
+            <div class="dual-chart-container">
+                <!-- Data Availability Chart -->
+                <div class="chart-wrapper">
+                    <h3>Data Availability</h3>
+                    <div class="chart-container">
+                        <canvas id="availability-chart"></canvas>
+                    </div>
+                </div>
+                
+                <!-- District Distribution Chart -->
+                <div class="chart-wrapper">
+                    <h3>District Distribution (Available Data Only)</h3>
+                    <div class="chart-container">
+                        <canvas id="district-chart"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <div class="data-note">
+                <i class="fas fa-info-circle"></i> 
+                <strong>Note:</strong> District data may contain formatting issues (e.g., "_x000D_" characters) which have been cleaned for display. 
+                Empty or invalid entries have been excluded from the analysis.
+            </div>
+
+            <!-- Data Table -->
+            <div class="table-container" style="margin-top: 30px;">
+                <h3><i class="fas fa-table"></i> District Data Table</h3>
+                <table class="data-table" id="data-table">
+                    <thead>
+                        <tr>
+                            <th>District</th>
+                            <th>Count</th>
+                            <th>Percentage of Total</th>
+                            <th>Percentage of Available</th>
+                        </tr>
+                    </thead>
+                    <tbody id="table-body">
+                        <!-- Table rows will be added dynamically -->
+                    </tbody>
+                </table>
+            </div>
+        </section>
+    </div>
+
+    <!-- Loading Spinner -->
+    <div class="loading" id="loading" style="display: none;">
+        <div class="spinner"></div>
+        <p>Processing data...</p>
+    </div>
+
+    <!-- Scripts -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.17.0/xlsx.full.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"></script>
+    <script src="../assets/js/common.js"></script>
+    
+    <script>
+        // Global variables
+        let districtData = [];
+        let availabilityChart = null;
+        let districtChart = null;
+        let totalCases = 0;
+        let showPercentage = false;
+
+        // Clean district data by removing carriage return characters and other formatting issues
+        function cleanDistrictName(district) {
+            if (!district || district === null || district === undefined) return null;
+            
+            // Convert to string and trim
+            let cleaned = String(district).trim();
+            
+            // Remove carriage return characters
+            cleaned = cleaned.replace(/_x000D_/g, '').replace(/\r/g, '').replace(/\n/g, ' ');
+            
+            // Remove multiple spaces
+            cleaned = cleaned.replace(/\s+/g, ' ').trim();
+            
+            // Filter out empty or invalid values
+            if (cleaned === '' || cleaned.toLowerCase() === 'null' || cleaned.toLowerCase() === 'undefined') {
+                return null;
+            }
+            
+            return cleaned;
+        }
+
+        // Process Excel data
+        function processExcelData(data) {
+            console.log('Processing Excel data...');
+            showLoading();
+            
+            // Reset data
+            districtData = [];
+            totalCases = 0;
+            
+            // Find the Reports sheet
+            const sheetName = 'Reports';
+            if (!data[sheetName]) {
+                showError('Reports sheet not found in the Excel file');
+                return;
+            }
+            
+            const reports = data[sheetName];
+            totalCases = reports.length;
+            
+            // Count districts
+            const districtCounts = {};
+            let casesWithDistrict = 0;
+            let casesWithoutDistrict = 0;
+            
+            reports.forEach(row => {
+                const rawDistrict = row['District'];
+                const cleanedDistrict = cleanDistrictName(rawDistrict);
+                
+                if (cleanedDistrict) {
+                    casesWithDistrict++;
+                    districtCounts[cleanedDistrict] = (districtCounts[cleanedDistrict] || 0) + 1;
+                } else {
+                    casesWithoutDistrict++;
+                }
+            });
+            
+            // Convert to array and sort
+            districtData = Object.entries(districtCounts)
+                .map(([district, count]) => ({
+                    district: district,
+                    count: count,
+                    percentageOfTotal: (count / totalCases) * 100,
+                    percentageOfAvailable: (count / casesWithDistrict) * 100
+                }))
+                .sort((a, b) => b.count - a.count);
+            
+            // Calculate statistics
+            const missingPercentage = (casesWithoutDistrict / totalCases) * 100;
+            const uniqueDistricts = districtData.length;
+            
+            // Show data quality warning
+            const warningElement = document.getElementById('data-warning');
+            const warningText = document.getElementById('warning-text');
+            warningText.textContent = `Warning: ${missingPercentage.toFixed(1)}% of records (${casesWithoutDistrict} out of ${totalCases}) do not have district data. The analysis below is based on the ${casesWithDistrict} records with available district information.`;
+            warningElement.style.display = 'flex';
+            
+            // Update summary statistics
+            updateSummaryStats(totalCases, casesWithDistrict, casesWithoutDistrict, uniqueDistricts);
+            
+            // Create visualizations
+            createAvailabilityChart(casesWithDistrict, casesWithoutDistrict);
+            createDistrictChart();
+            updateDataTable();
+            
+            // Show sections
+            showSections(['summary-section', 'visualization-section']);
+            hideLoading();
+            showSuccess('Data processed successfully!');
+        }
+
+        // Update summary statistics
+        function updateSummaryStats(total, withDistrict, withoutDistrict, unique) {
+            const statsContainer = document.getElementById('stats-container');
+            statsContainer.innerHTML = '';
+            
+            const stats = [
+                { label: 'Total Cases', value: total, icon: 'fas fa-database', color: '#3498db' },
+                { label: 'Cases with District', value: withDistrict, icon: 'fas fa-check-circle', color: '#27ae60' },
+                { label: 'Missing District Data', value: withoutDistrict, icon: 'fas fa-exclamation-circle', color: '#e74c3c' },
+                { label: 'Unique Districts', value: unique, icon: 'fas fa-map-marked-alt', color: '#9b59b6' }
+            ];
+            
+            stats.forEach(stat => {
+                statsContainer.appendChild(createStatCard(stat.label, stat.value, stat.icon, stat.color));
+            });
+        }
+
+        // Create stat card
+        function createStatCard(label, value, icon, color) {
+            const card = document.createElement('div');
+            card.className = 'stat-card';
+            card.innerHTML = `
+                <div class="stat-icon" style="color: ${color}">
+                    <i class="${icon}"></i>
+                </div>
+                <div class="stat-content">
+                    <div class="stat-value">${value.toLocaleString()}</div>
+                    <div class="stat-label">${label}</div>
+                </div>
+            `;
+            return card;
+        }
+
+        // Create data availability chart
+        function createAvailabilityChart(withData, withoutData) {
+            const ctx = document.getElementById('availability-chart').getContext('2d');
+            
+            if (availabilityChart) {
+                availabilityChart.destroy();
+            }
+            
+            const data = {
+                labels: ['With District Data', 'Without District Data'],
+                datasets: [{
+                    data: [withData, withoutData],
+                    backgroundColor: ['#27ae60', '#e74c3c'],
+                    borderWidth: 2,
+                    borderColor: '#fff'
+                }]
+            };
+            
+            availabilityChart = new Chart(ctx, {
+                type: 'doughnut',
+                data: data,
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'bottom',
+                            labels: {
+                                padding: 15,
+                                font: { size: 12 }
+                            }
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    const label = context.label || '';
+                                    const value = context.parsed;
+                                    const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                                    const percentage = ((value / total) * 100).toFixed(1);
+                                    return `${label}: ${value} (${percentage}%)`;
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        // Create district distribution chart
+        function createDistrictChart() {
+            const ctx = document.getElementById('district-chart').getContext('2d');
+            
+            if (districtChart) {
+                districtChart.destroy();
+            }
+            
+            // Limit to top 20 districts for better visibility
+            const chartData = districtData.slice(0, 20);
+            
+            const data = {
+                labels: chartData.map(d => d.district),
+                datasets: [{
+                    label: 'Number of Cases',
+                    data: chartData.map(d => showPercentage ? d.percentageOfAvailable : d.count),
+                    backgroundColor: '#3498db',
+                    borderColor: '#2980b9',
+                    borderWidth: 1
+                }]
+            };
+            
+            districtChart = new Chart(ctx, {
+                type: 'bar',
+                data: data,
+                options: {
+                    indexAxis: 'y',
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    const item = chartData[context.dataIndex];
+                                    if (showPercentage) {
+                                        return `${item.percentageOfAvailable.toFixed(1)}% of available data (${item.count} cases)`;
+                                    }
+                                    return `${item.count} cases (${item.percentageOfAvailable.toFixed(1)}% of available)`;
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            beginAtZero: true,
+                            title: {
+                                display: true,
+                                text: showPercentage ? 'Percentage of Available Data (%)' : 'Number of Cases'
+                            }
+                        },
+                        y: {
+                            ticks: {
+                                autoSkip: false
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        // Update data table
+        function updateDataTable() {
+            const tableBody = document.getElementById('table-body');
+            tableBody.innerHTML = '';
+            
+            districtData.forEach(item => {
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td>${item.district}</td>
+                    <td>${item.count}</td>
+                    <td>${item.percentageOfTotal.toFixed(1)}%</td>
+                    <td>${item.percentageOfAvailable.toFixed(1)}%</td>
+                `;
+                tableBody.appendChild(row);
+            });
+        }
+
+        // Toggle percentage view
+        document.getElementById('toggle-percentage').addEventListener('click', function() {
+            showPercentage = !showPercentage;
+            this.innerHTML = showPercentage ? 
+                '<i class="fas fa-hashtag"></i> Show Count' : 
+                '<i class="fas fa-percent"></i> Show Percentage';
+            createDistrictChart();
+        });
+
+        // Download CSV
+        document.getElementById('download-csv').addEventListener('click', function() {
+            let csv = 'District,Count,Percentage of Total,Percentage of Available\n';
+            
+            districtData.forEach(item => {
+                csv += `"${item.district}",${item.count},${item.percentageOfTotal.toFixed(1)}%,${item.percentageOfAvailable.toFixed(1)}%\n`;
+            });
+            
+            const blob = new Blob([csv], { type: 'text/csv' });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'adr_reporter_districts.csv';
+            a.click();
+            window.URL.revokeObjectURL(url);
+            
+            showSuccess('CSV file downloaded successfully!');
+        });
+
+        // Download chart
+        document.getElementById('download-chart').addEventListener('click', function() {
+            downloadChart('district-chart', 'adr_reporter_districts');
+        });
+
+        // Initialize file upload
+        setupFileUpload(processExcelData);
+    </script>
+</body>
+</html>

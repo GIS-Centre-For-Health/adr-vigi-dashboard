@@ -1,0 +1,698 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ADR Action Taken Visualization - VigiFlow</title>
+    
+    <!-- External Libraries -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.17.0/xlsx.full.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    
+    <!-- Common Styles -->
+    <link rel="stylesheet" href="../assets/css/common.css">
+    
+    <style>
+        .action-legend {
+            background: #f8f9fa;
+            border-radius: 5px;
+            padding: 1rem;
+            margin: 1rem 0;
+            font-size: 0.9rem;
+        }
+        
+        .action-legend h4 {
+            margin-bottom: 0.5rem;
+            color: #333;
+        }
+        
+        .legend-item {
+            display: inline-flex;
+            align-items: center;
+            margin-right: 1.5rem;
+            margin-bottom: 0.5rem;
+        }
+        
+        .legend-color {
+            width: 20px;
+            height: 20px;
+            border-radius: 3px;
+            margin-right: 0.5rem;
+        }
+        
+        .data-info {
+            background-color: #e3f2fd;
+            border: 1px solid #90caf9;
+            color: #1565c0;
+            padding: 1rem;
+            border-radius: 5px;
+            margin: 1rem 0;
+        }
+        
+        .data-info i {
+            margin-right: 0.5rem;
+        }
+        
+        .chart-wrapper {
+            background: white;
+            padding: 2rem;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+            margin-bottom: 2rem;
+        }
+        
+        #actionChart {
+            max-height: 400px;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>ADR Visualization Tool</h1>
+        <p>Adverse Drug Reactions Data Analysis from VigiFlow - Action Taken</p>
+    </div>
+    
+    <div class="container">
+        <!-- Upload Section -->
+        <div class="upload-section">
+            <h2>Upload ADR Data File</h2>
+            <p>Select an Excel file (.xlsx, .xls) containing ADR data from VigiFlow</p>
+            <div class="upload-area" id="upload-area">
+                <i class="fas fa-cloud-upload-alt" style="font-size: 3rem; color: #2a5298;"></i>
+                <p style="margin: 1rem 0;">Drag and drop your file here or click to browse</p>
+                <input type="file" id="file-input" accept=".xlsx,.xls">
+            </div>
+            <div id="file-info" style="margin-top: 1rem; display: none;">
+                <p>Selected file: <strong id="file-name"></strong></p>
+            </div>
+        </div>
+        
+        <!-- Loading -->
+        <div class="loading" id="loading">
+            <div class="spinner"></div>
+            <p>Processing your data...</p>
+        </div>
+        
+        <!-- Messages -->
+        <div class="message success" id="success-message"></div>
+        <div class="message error" id="error-message"></div>
+        
+        <!-- Data Info -->
+        <div class="data-info" id="data-info" style="display: none;">
+            <i class="fas fa-info-circle"></i>
+            <strong>Data Note:</strong> <span id="multiple-actions-count"></span> cases have multiple actions recorded. 
+            Each action is counted separately in the visualization below.
+        </div>
+        
+        <!-- Summary Statistics -->
+        <div class="summary-section" id="summary-section">
+            <h2>Summary Statistics</h2>
+            <div class="summary-cards" id="summary-cards">
+                <!-- Summary cards will be populated here -->
+            </div>
+        </div>
+        
+        <!-- Action Legend -->
+        <div class="visualization-section" id="legend-section" style="display: none;">
+            <div class="action-legend">
+                <h4>Action Categories by Severity</h4>
+                <div id="legend-items">
+                    <!-- Legend items will be populated here -->
+                </div>
+            </div>
+        </div>
+        
+        <!-- Visualization Section -->
+        <div class="visualization-section" id="visualization-section">
+            <div class="chart-header">
+                <h2 class="chart-title">ADR Cases by Action Taken</h2>
+                <div class="chart-actions">
+                    <button class="chart-btn" onclick="downloadChartImage()">
+                        <i class="fas fa-download"></i> Download
+                    </button>
+                    <button class="chart-btn" onclick="maximizeChart()">
+                        <i class="fas fa-expand"></i> Maximize
+                    </button>
+                </div>
+            </div>
+            
+            <div class="toggle-container">
+                <label class="toggle-label">
+                    <input type="checkbox" id="percentage-toggle" onchange="updateChartDisplay()">
+                    <span>Show Percentages</span>
+                </label>
+            </div>
+            
+            <div class="chart-wrapper">
+                <canvas id="actionChart"></canvas>
+            </div>
+            
+            <!-- Data Availability Chart -->
+            <div class="chart-wrapper">
+                <h3>Data Availability</h3>
+                <div class="chart-container" style="height: 300px;">
+                    <canvas id="availabilityChart"></canvas>
+                </div>
+            </div>
+            
+            <!-- Data Table -->
+            <div id="dataTable">
+                <h2>Action Taken Details</h2>
+                <table id="actionTable">
+                    <thead>
+                        <tr>
+                            <th onclick="sortTable(0)">Action <i class="fas fa-sort"></i></th>
+                            <th onclick="sortTable(1)">Count <i class="fas fa-sort"></i></th>
+                            <th onclick="sortTable(2)">Percentage of Actions <i class="fas fa-sort"></i></th>
+                            <th onclick="sortTable(3)">Cases Affected <i class="fas fa-sort"></i></th>
+                        </tr>
+                    </thead>
+                    <tbody id="tableBody"></tbody>
+                </table>
+            </div>
+        </div>
+        
+        <!-- Export Section -->
+        <div class="visualization-section" id="export-section" style="display: none;">
+            <h2>Export Options</h2>
+            <div style="text-align: center; padding: 2rem;">
+                <button class="btn btn-primary" onclick="exportToPDF()">
+                    <i class="fas fa-file-pdf"></i> Export as PDF
+                </button>
+                <button class="btn btn-primary" onclick="exportToCSV()">
+                    <i class="fas fa-file-csv"></i> Export Data as CSV
+                </button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Common JavaScript -->
+    <script src="../assets/js/common.js"></script>
+    
+    <!-- Page-specific JavaScript -->
+    <script>
+        let actionChart = null;
+        let availabilityChart = null;
+        let actionData = {};
+        let dataStats = {};
+        let showPercentage = false;
+        let caseActionMap = {}; // Track which cases have which actions
+        
+        // Action categories with medical severity-based colors
+        const actionColors = {
+            'Drug stopped': '#dc3545',           // Red - severe action
+            'Drug withdrawn': '#dc3545',         // Red - severe action (synonym)
+            'Dose reduced': '#fd7e14',           // Orange - moderate action
+            'Dose increased': '#ffc107',         // Yellow - adjustment
+            'Drug not changed': '#28a745',       // Green - no change
+            'Monitoring increased': '#17a2b8',   // Cyan - caution
+            'Drug reintroduced': '#6f42c1',      // Purple - restart
+            'Unknown': '#6c757d',                // Gray - uncertain
+            'Not applicable': '#adb5bd',         // Light gray
+            'Other': '#343a40'                   // Dark gray
+        };
+        
+        // Process data specific to this visualization
+        function processData(data) {
+            originalData = data;
+            filteredData = data;
+            
+            processActionData(data);
+            
+            hideLoading();
+            showSuccess(`Successfully loaded ${data.length} ADR records`);
+            
+            // Show data info if there are multiple actions
+            if (dataStats.casesWithMultipleActions > 0) {
+                document.getElementById('data-info').style.display = 'block';
+                document.getElementById('multiple-actions-count').textContent = dataStats.casesWithMultipleActions;
+            }
+            
+            // Show sections
+            showSections();
+            document.getElementById('legend-section').style.display = 'block';
+            
+            // Generate visualizations
+            generateVisualization();
+            updateSummaryStats();
+            displayLegend();
+        }
+        
+        function processActionData(data) {
+            const actions = {};
+            let nullCount = 0;
+            let casesWithActions = 0;
+            let casesWithMultipleActions = 0;
+            let totalActions = 0;
+            caseActionMap = {};
+            
+            data.forEach((row, index) => {
+                const actionValue = row['Action taken'];
+                
+                if (!actionValue || actionValue === '' || actionValue === null || actionValue === 'null') {
+                    nullCount++;
+                } else {
+                    casesWithActions++;
+                    const caseActions = [];
+                    
+                    // Split multiple actions
+                    const actionList = actionValue.toString().split(/\r?\n|_x000D_/)
+                        .map(a => a.trim())
+                        .filter(a => a && a !== '_x000D_');
+                    
+                    if (actionList.length > 1) {
+                        casesWithMultipleActions++;
+                    }
+                    
+                    actionList.forEach(action => {
+                        const normalizedAction = normalizeAction(action);
+                        if (normalizedAction) {
+                            if (!actions[normalizedAction]) {
+                                actions[normalizedAction] = {
+                                    count: 0,
+                                    color: actionColors[normalizedAction] || '#343a40',
+                                    cases: new Set()
+                                };
+                            }
+                            actions[normalizedAction].count++;
+                            actions[normalizedAction].cases.add(index);
+                            totalActions++;
+                            caseActions.push(normalizedAction);
+                        }
+                    });
+                    
+                    if (caseActions.length > 0) {
+                        caseActionMap[index] = caseActions;
+                    }
+                }
+            });
+            
+            // Calculate percentages
+            Object.keys(actions).forEach(key => {
+                actions[key].percentage = totalActions > 0 ? 
+                    ((actions[key].count / totalActions) * 100).toFixed(1) : 0;
+                actions[key].caseCount = actions[key].cases.size;
+            });
+            
+            actionData = actions;
+            dataStats = {
+                total: data.length,
+                nullCount: nullCount,
+                casesWithActions: casesWithActions,
+                casesWithMultipleActions: casesWithMultipleActions,
+                totalActions: totalActions,
+                nullPercentage: ((nullCount / data.length) * 100).toFixed(1)
+            };
+        }
+        
+        function normalizeAction(action) {
+            const lowerAction = action.toLowerCase().trim();
+            
+            // Map variations to standard categories
+            if (lowerAction.includes('stopped') || lowerAction.includes('withdrawn')) {
+                return 'Drug stopped';
+            } else if (lowerAction.includes('dose') && lowerAction.includes('reduced')) {
+                return 'Dose reduced';
+            } else if (lowerAction.includes('dose') && lowerAction.includes('increased')) {
+                return 'Dose increased';
+            } else if (lowerAction.includes('not changed') || lowerAction.includes('no change')) {
+                return 'Drug not changed';
+            } else if (lowerAction.includes('monitoring')) {
+                return 'Monitoring increased';
+            } else if (lowerAction.includes('reintroduced')) {
+                return 'Drug reintroduced';
+            } else if (lowerAction.includes('unknown')) {
+                return 'Unknown';
+            } else if (lowerAction.includes('not applicable')) {
+                return 'Not applicable';
+            } else if (action.trim()) {
+                return 'Other';
+            }
+            
+            return null;
+        }
+        
+        function displayLegend() {
+            const legendItems = document.getElementById('legend-items');
+            legendItems.innerHTML = '';
+            
+            Object.entries(actionColors).forEach(([action, color]) => {
+                const item = document.createElement('div');
+                item.className = 'legend-item';
+                item.innerHTML = `
+                    <div class="legend-color" style="background-color: ${color}"></div>
+                    <span>${action}</span>
+                `;
+                legendItems.appendChild(item);
+            });
+        }
+        
+        // Generate visualization
+        function generateVisualization() {
+            createActionChart();
+            createAvailabilityChart();
+            displayDataTable();
+        }
+        
+        function createActionChart() {
+            const ctx = document.getElementById('actionChart').getContext('2d');
+            
+            // Sort actions by count for horizontal bar chart
+            const sortedActions = Object.entries(actionData)
+                .sort((a, b) => b[1].count - a[1].count);
+            
+            const labels = sortedActions.map(([action, _]) => action);
+            const data = sortedActions.map(([_, data]) => data.count);
+            const colors = sortedActions.map(([_, data]) => data.color);
+            
+            if (actionChart) {
+                actionChart.destroy();
+            }
+            
+            actionChart = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: 'Number of Actions',
+                        data: data,
+                        backgroundColor: colors,
+                        borderWidth: 2,
+                        borderColor: '#ffffff'
+                    }]
+                },
+                options: {
+                    indexAxis: 'y', // Horizontal bar chart
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            display: false
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    const action = context.label;
+                                    const actionInfo = actionData[action];
+                                    return [
+                                        `Count: ${actionInfo.count}`,
+                                        `Percentage: ${actionInfo.percentage}%`,
+                                        `Cases affected: ${actionInfo.caseCount}`
+                                    ];
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            beginAtZero: true,
+                            ticks: {
+                                stepSize: 1,
+                                precision: 0
+                            },
+                            title: {
+                                display: true,
+                                text: 'Number of Actions'
+                            }
+                        },
+                        y: {
+                            title: {
+                                display: true,
+                                text: 'Action Type'
+                            }
+                        }
+                    }
+                }
+            });
+        }
+        
+        function updateChartDisplay() {
+            showPercentage = document.getElementById('percentage-toggle').checked;
+            
+            if (actionChart) {
+                const sortedActions = Object.entries(actionData)
+                    .sort((a, b) => b[1].count - a[1].count);
+                
+                const data = showPercentage ? 
+                    sortedActions.map(([_, data]) => parseFloat(data.percentage)) :
+                    sortedActions.map(([_, data]) => data.count);
+                
+                actionChart.data.datasets[0].data = data;
+                actionChart.data.datasets[0].label = showPercentage ? 'Percentage of Actions' : 'Number of Actions';
+                
+                actionChart.options.scales.x.title.text = showPercentage ? 'Percentage (%)' : 'Number of Actions';
+                actionChart.options.plugins.tooltip.callbacks.label = function(context) {
+                    const action = context.label;
+                    const actionInfo = actionData[action];
+                    if (showPercentage) {
+                        return `${actionInfo.percentage}% of all actions`;
+                    } else {
+                        return [
+                            `Count: ${actionInfo.count}`,
+                            `Percentage: ${actionInfo.percentage}%`,
+                            `Cases affected: ${actionInfo.caseCount}`
+                        ];
+                    }
+                };
+                
+                actionChart.update();
+            }
+        }
+        
+        function createAvailabilityChart() {
+            const ctx = document.getElementById('availabilityChart').getContext('2d');
+            
+            if (availabilityChart) {
+                availabilityChart.destroy();
+            }
+            
+            availabilityChart = new Chart(ctx, {
+                type: 'doughnut',
+                data: {
+                    labels: ['Cases with Actions', 'No Action Data'],
+                    datasets: [{
+                        data: [dataStats.casesWithActions, dataStats.nullCount],
+                        backgroundColor: ['#28a745', '#dc3545'],
+                        borderWidth: 2,
+                        borderColor: '#ffffff'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'bottom',
+                            labels: {
+                                padding: 15,
+                                usePointStyle: true
+                            }
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    const label = context.label || '';
+                                    const value = context.parsed;
+                                    const percentage = ((value / dataStats.total) * 100).toFixed(1);
+                                    return `${label}: ${value} (${percentage}%)`;
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+        
+        // Update summary statistics
+        function updateSummaryStats() {
+            const summaryCards = document.getElementById('summary-cards');
+            summaryCards.innerHTML = '';
+            
+            // Total Cases
+            const totalCard = document.createElement('div');
+            totalCard.className = 'summary-card';
+            totalCard.innerHTML = `
+                <div class="card-icon"><i class="fas fa-file-medical"></i></div>
+                <div class="card-content">
+                    <div class="card-title">Total Cases</div>
+                    <div class="card-value">${dataStats.total}</div>
+                </div>
+            `;
+            summaryCards.appendChild(totalCard);
+            
+            // Total Actions
+            const actionsCard = document.createElement('div');
+            actionsCard.className = 'summary-card';
+            actionsCard.innerHTML = `
+                <div class="card-icon"><i class="fas fa-pills"></i></div>
+                <div class="card-content">
+                    <div class="card-title">Total Actions</div>
+                    <div class="card-value">${dataStats.totalActions}</div>
+                </div>
+            `;
+            summaryCards.appendChild(actionsCard);
+            
+            // Cases with Actions
+            const withActionsCard = document.createElement('div');
+            withActionsCard.className = 'summary-card';
+            withActionsCard.innerHTML = `
+                <div class="card-icon"><i class="fas fa-check-circle"></i></div>
+                <div class="card-content">
+                    <div class="card-title">Cases with Actions</div>
+                    <div class="card-value">${dataStats.casesWithActions}</div>
+                </div>
+            `;
+            summaryCards.appendChild(withActionsCard);
+            
+            // Most Common Action
+            const mostCommon = Object.entries(actionData)
+                .sort((a, b) => b[1].count - a[1].count)[0];
+            const commonCard = document.createElement('div');
+            commonCard.className = 'summary-card';
+            commonCard.innerHTML = `
+                <div class="card-icon"><i class="fas fa-chart-line"></i></div>
+                <div class="card-content">
+                    <div class="card-title">Most Common Action</div>
+                    <div class="card-value">${mostCommon ? mostCommon[0] : '-'}</div>
+                </div>
+            `;
+            summaryCards.appendChild(commonCard);
+        }
+        
+        function displayDataTable() {
+            const tbody = document.getElementById('tableBody');
+            tbody.innerHTML = '';
+            
+            // Add row for no action data
+            const noActionRow = tbody.insertRow();
+            noActionRow.style.fontStyle = 'italic';
+            noActionRow.style.color = '#666';
+            noActionRow.insertCell(0).textContent = 'No Action Data';
+            noActionRow.insertCell(1).textContent = dataStats.nullCount;
+            noActionRow.insertCell(2).textContent = 'N/A';
+            noActionRow.insertCell(3).textContent = dataStats.nullCount;
+            
+            // Add rows for actions
+            Object.entries(actionData)
+                .sort((a, b) => b[1].count - a[1].count)
+                .forEach(([action, data]) => {
+                    const row = tbody.insertRow();
+                    row.insertCell(0).textContent = action;
+                    row.insertCell(1).textContent = data.count;
+                    row.insertCell(2).textContent = data.percentage + '%';
+                    row.insertCell(3).textContent = data.caseCount;
+                });
+        }
+        
+        function sortTable(columnIndex) {
+            const table = document.getElementById('actionTable');
+            const tbody = table.querySelector('tbody');
+            const rows = Array.from(tbody.rows);
+            
+            // Separate the no action data row
+            const noActionRow = rows.shift();
+            
+            rows.sort((a, b) => {
+                const aValue = columnIndex === 0 ? a.cells[columnIndex].textContent :
+                              parseFloat(a.cells[columnIndex].textContent);
+                const bValue = columnIndex === 0 ? b.cells[columnIndex].textContent :
+                              parseFloat(b.cells[columnIndex].textContent);
+                
+                if (columnIndex === 0) {
+                    return aValue.localeCompare(bValue);
+                } else {
+                    return bValue - aValue;
+                }
+            });
+            
+            tbody.innerHTML = '';
+            tbody.appendChild(noActionRow);
+            rows.forEach(row => tbody.appendChild(row));
+        }
+        
+        // Page-specific export functions
+        function downloadChartImage() {
+            downloadChart(actionChart, 'adr_action_taken.png');
+        }
+        
+        function maximizeChart() {
+            createMaximizeModal(actionChart, 'ADR Cases by Action Taken');
+        }
+        
+        function exportToCSV() {
+            const headers = ['Action', 'Count', 'Percentage of Actions', 'Cases Affected'];
+            const rows = [
+                ['No Action Data', dataStats.nullCount, 'N/A', dataStats.nullCount]
+            ];
+            
+            Object.entries(actionData)
+                .sort((a, b) => b[1].count - a[1].count)
+                .forEach(([action, data]) => {
+                    rows.push([action, data.count, data.percentage + '%', data.caseCount]);
+                });
+            
+            downloadCSV(headers, rows, 'adr_action_taken.csv');
+        }
+        
+        function exportToPDF() {
+            showLoading();
+            
+            const { jsPDF } = window.jspdf;
+            const pdf = new jsPDF();
+            
+            // Add title
+            pdf.setFontSize(20);
+            pdf.text('ADR Action Taken Analysis', 20, 20);
+            
+            // Add date
+            pdf.setFontSize(12);
+            pdf.text(`Generated on: ${new Date().toLocaleDateString()}`, 20, 30);
+            
+            // Add summary stats
+            pdf.setFontSize(14);
+            pdf.text('Summary Statistics:', 20, 45);
+            
+            pdf.setFontSize(11);
+            pdf.text(`Total Cases: ${dataStats.total}`, 30, 55);
+            pdf.text(`Cases with Actions: ${dataStats.casesWithActions}`, 30, 63);
+            pdf.text(`Total Actions Recorded: ${dataStats.totalActions}`, 30, 71);
+            pdf.text(`Cases with Multiple Actions: ${dataStats.casesWithMultipleActions}`, 30, 79);
+            
+            // Add action breakdown
+            let yPosition = 95;
+            pdf.setFontSize(12);
+            pdf.text('Action Breakdown:', 20, yPosition);
+            
+            yPosition += 10;
+            pdf.setFontSize(10);
+            
+            // Add no action data first
+            pdf.text(`No Action Data: ${dataStats.nullCount} cases (${dataStats.nullPercentage}%)`, 30, yPosition);
+            yPosition += 8;
+            
+            Object.entries(actionData)
+                .sort((a, b) => b[1].count - a[1].count)
+                .forEach(([action, data]) => {
+                    pdf.text(`${action}: ${data.count} actions (${data.percentage}%) in ${data.caseCount} cases`, 30, yPosition);
+                    yPosition += 8;
+                });
+            
+            // Add chart
+            if (actionChart) {
+                const chartImage = actionChart.toBase64Image();
+                pdf.addPage();
+                pdf.text('Action Distribution Chart', 20, 20);
+                pdf.addImage(chartImage, 'PNG', 20, 30, 170, 100);
+            }
+            
+            // Save PDF
+            pdf.save('adr_action_taken_analysis.pdf');
+            
+            hideLoading();
+            showSuccess('PDF exported successfully!');
+        }
+    </script>
+</body>
+</html>

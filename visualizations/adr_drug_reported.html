@@ -1,0 +1,963 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ADR Drug Analysis (Reporter Names) - VigiFlow</title>
+    
+    <!-- External Libraries -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.17.0/xlsx.full.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    
+    <!-- Common Styles -->
+    <link rel="stylesheet" href="../assets/css/common.css">
+    
+    <!-- Page-specific styles -->
+    <style>
+        .view-toggle {
+            margin: 1rem 0;
+            text-align: center;
+            background: #f8f9fa;
+            padding: 1rem;
+            border-radius: 8px;
+        }
+        
+        .view-toggle button {
+            margin: 0 0.5rem;
+        }
+        
+        .active-view {
+            background-color: #2a5298;
+            color: white;
+        }
+        
+        .drug-combinations-table {
+            max-height: 400px;
+            overflow-y: auto;
+            margin-top: 1rem;
+        }
+        
+        .combination-row {
+            background: #f8f9fa;
+            padding: 0.75rem;
+            margin: 0.5rem 0;
+            border-radius: 4px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-left: 4px solid #3498db;
+        }
+        
+        .combination-drugs {
+            flex: 1;
+            font-size: 0.95rem;
+        }
+        
+        .combination-count {
+            font-weight: bold;
+            color: #2a5298;
+            margin-left: 1rem;
+            white-space: nowrap;
+        }
+        
+        .analysis-mode-selector {
+            background: #e8f4f8;
+            padding: 1rem;
+            border-radius: 8px;
+            margin-bottom: 1rem;
+        }
+        
+        .mode-option {
+            display: inline-block;
+            margin-right: 2rem;
+        }
+        
+        .info-box {
+            background: #f0f8ff;
+            border-left: 4px solid #3498db;
+            padding: 1rem;
+            margin: 1rem 0;
+            border-radius: 4px;
+        }
+        
+        .info-box h4 {
+            margin: 0 0 0.5rem 0;
+            color: #2a5298;
+        }
+        
+        .chart-container-wrapper {
+            display: flex;
+            gap: 2rem;
+            align-items: center;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+        
+        .pie-chart-container {
+            flex: 0 1 400px;
+            max-width: 400px;
+            height: 400px;
+            max-height: 400px;
+        }
+        
+        .bar-chart-container {
+            flex: 1 1 600px;
+            height: 400px;
+            max-height: 400px;
+        }
+        
+        .detailed-bar-container {
+            height: 600px;
+            margin-top: 2rem;
+        }
+        
+        .search-box {
+            margin: 1rem 0;
+            padding: 0.75rem;
+            width: 100%;
+            max-width: 400px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 1rem;
+        }
+        
+        .drug-table-container {
+            max-height: 500px;
+            overflow-y: auto;
+            margin-top: 1rem;
+        }
+        
+        .note-box {
+            background: #fff3cd;
+            border-left: 4px solid #ffc107;
+            padding: 1rem;
+            margin: 1rem 0;
+            border-radius: 4px;
+            font-size: 0.95rem;
+        }
+        
+        .note-box i {
+            color: #856404;
+            margin-right: 0.5rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>ADR Drug Analysis (As Reported by Initial Reporter)</h1>
+        <p>Analysis of drug names as originally reported in VigiFlow ADR data</p>
+    </div>
+    
+    <div class="container">
+        <!-- Upload Section -->
+        <div class="upload-section">
+            <h2>Upload ADR Data File</h2>
+            <p>Select an Excel file (.xlsx, .xls) containing ADR data from VigiFlow</p>
+            <div class="upload-area" id="upload-area">
+                <i class="fas fa-cloud-upload-alt" style="font-size: 3rem; color: #2a5298;"></i>
+                <p style="margin: 1rem 0;">Drag and drop your file here or click to browse</p>
+                <input type="file" id="file-input" accept=".xlsx,.xls">
+            </div>
+            <div id="file-info" style="margin-top: 1rem; display: none;">
+                <p>Selected file: <strong id="file-name"></strong></p>
+            </div>
+        </div>
+        
+        <!-- Loading -->
+        <div class="loading" id="loading">
+            <div class="spinner"></div>
+            <p>Processing your data...</p>
+        </div>
+        
+        <!-- Messages -->
+        <div class="message success" id="success-message"></div>
+        <div class="message error" id="error-message"></div>
+        
+        <!-- Filter Section -->
+        <div class="filter-section" id="filter-section">
+            <h2>Filter Data</h2>
+            <div class="filter-grid">
+                <div class="filter-group">
+                    <label for="year-filter">Year</label>
+                    <select id="year-filter">
+                        <option value="">All Years</option>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label for="date-from">Date From</label>
+                    <input type="date" id="date-from">
+                </div>
+                <div class="filter-group">
+                    <label for="date-to">Date To</label>
+                    <input type="date" id="date-to">
+                </div>
+            </div>
+            <div style="margin-top: 1rem;">
+                <button class="btn btn-primary" onclick="applyFilters()">Apply Filters</button>
+                <button class="btn btn-secondary" onclick="resetFilters()">Reset</button>
+            </div>
+        </div>
+        
+        <!-- Summary Statistics -->
+        <div class="summary-section" id="summary-section">
+            <h2>Summary Statistics</h2>
+            <div class="stats-grid" id="stats-grid">
+                <!-- Stats will be populated here -->
+            </div>
+        </div>
+        
+        <!-- Note about reporter drug names -->
+        <div class="note-box" id="note-section" style="display: none;">
+            <i class="fas fa-info-circle"></i>
+            <strong>Note:</strong> This analysis shows drug names as originally reported by the initial reporter, 
+            which may include spelling variations, brand names, or non-standardized formats. 
+            For standardized WHO drug names, use the "ADR Drug Analysis" visualization.
+        </div>
+        
+        <!-- Analysis Mode Selector -->
+        <div class="analysis-mode-selector" id="mode-section" style="display: none;">
+            <h3>Analysis Mode</h3>
+            <div class="mode-option">
+                <input type="radio" id="mode-cases" name="analysis-mode" value="cases" checked onchange="changeAnalysisMode()">
+                <label for="mode-cases">By Cases (count each case once, regardless of drugs)</label>
+            </div>
+            <div class="mode-option">
+                <input type="radio" id="mode-mentions" name="analysis-mode" value="mentions" onchange="changeAnalysisMode()">
+                <label for="mode-mentions">By Mentions (count each drug separately)</label>
+            </div>
+        </div>
+        
+        <!-- View Toggle -->
+        <div class="visualization-section view-toggle" id="view-toggle-section" style="display: none;">
+            <button class="btn btn-primary active-view" id="overview-btn" onclick="showOverview()">
+                <i class="fas fa-chart-pie"></i> Overview
+            </button>
+            <button class="btn btn-secondary" id="detailed-btn" onclick="showDetailed()">
+                <i class="fas fa-list"></i> All Drugs
+            </button>
+            <button class="btn btn-secondary" id="combinations-btn" onclick="showCombinations()">
+                <i class="fas fa-pills"></i> Drug Combinations
+            </button>
+        </div>
+        
+        <!-- Overview View -->
+        <div class="visualization-section" id="overview-section" style="display: none;">
+            <div class="chart-header">
+                <h2 class="chart-title">Drug Distribution Overview (Reporter Names)</h2>
+                <div class="chart-actions">
+                    <button class="chart-btn" onclick="downloadOverviewCharts()">
+                        <i class="fas fa-download"></i> Download
+                    </button>
+                </div>
+            </div>
+            
+            <div class="info-box" id="overview-info">
+                <!-- Info will be populated here -->
+            </div>
+            
+            <div class="chart-container-wrapper">
+                <div class="pie-chart-container">
+                    <canvas id="drug-pie-chart"></canvas>
+                </div>
+                <div class="bar-chart-container">
+                    <canvas id="drug-bar-chart"></canvas>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Detailed View -->
+        <div class="visualization-section" id="detailed-section" style="display: none;">
+            <div class="chart-header">
+                <h2 class="chart-title">All Reported Drug Names</h2>
+                <div class="chart-actions">
+                    <button class="chart-btn" onclick="downloadDetailedChart()">
+                        <i class="fas fa-download"></i> Download
+                    </button>
+                    <button class="chart-btn" onclick="exportDrugList()">
+                        <i class="fas fa-file-csv"></i> Export List
+                    </button>
+                </div>
+            </div>
+            
+            <input type="text" class="search-box" id="drug-search" placeholder="Search drugs..." onkeyup="filterDrugTable()">
+            
+            <div class="drug-table-container">
+                <table class="data-table" id="drug-table">
+                    <thead>
+                        <tr>
+                            <th>Drug Name (as reported)</th>
+                            <th>Cases</th>
+                            <th>Percentage</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <!-- Table rows will be populated here -->
+                    </tbody>
+                </table>
+            </div>
+            
+            <div class="detailed-bar-container">
+                <canvas id="detailed-bar-chart"></canvas>
+            </div>
+        </div>
+        
+        <!-- Combinations View -->
+        <div class="visualization-section" id="combinations-section" style="display: none;">
+            <div class="chart-header">
+                <h2 class="chart-title">Drug Combinations (Polypharmacy)</h2>
+                <div class="chart-actions">
+                    <button class="chart-btn" onclick="exportCombinations()">
+                        <i class="fas fa-file-csv"></i> Export
+                    </button>
+                </div>
+            </div>
+            
+            <div class="info-box">
+                <h4>Combination Analysis</h4>
+                <p id="combination-summary"><!-- Summary will be populated here --></p>
+            </div>
+            
+            <div class="drug-combinations-table" id="combinations-container">
+                <!-- Combinations will be populated here -->
+            </div>
+        </div>
+        
+        <!-- Export Section -->
+        <div class="visualization-section" id="export-section" style="display: none;">
+            <h2>Export Options</h2>
+            <div style="text-align: center; padding: 2rem;">
+                <button class="btn btn-primary" onclick="exportToPDF()">
+                    <i class="fas fa-file-pdf"></i> Export Report as PDF
+                </button>
+                <button class="btn btn-primary" onclick="exportAllData()">
+                    <i class="fas fa-file-csv"></i> Export All Data as CSV
+                </button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Common JavaScript -->
+    <script src="../assets/js/common.js"></script>
+    
+    <!-- Page-specific JavaScript -->
+    <script>
+        let drugPieChart = null;
+        let drugBarChart = null;
+        let detailedBarChart = null;
+        let currentView = 'overview';
+        let analysisMode = 'cases';
+        let drugAnalysisData = {};
+        const dateField = '_parsedDate';
+        
+        // Process data specific to this visualization
+        function processData(data) {
+            originalData = data;
+            filteredData = data;
+            
+            // Parse dates for filtering
+            originalData.forEach(row => {
+                if (row['Initial received date']) {
+                    row._parsedDate = parseInitialReceivedDate(row['Initial received date']);
+                }
+            });
+            
+            hideLoading();
+            showSuccess(`Successfully loaded ${data.length} ADR records`);
+            
+            // Show sections
+            document.getElementById('filter-section').style.display = 'block';
+            document.getElementById('summary-section').style.display = 'block';
+            document.getElementById('note-section').style.display = 'block';
+            document.getElementById('mode-section').style.display = 'block';
+            document.getElementById('view-toggle-section').style.display = 'block';
+            document.getElementById('overview-section').style.display = 'block';
+            document.getElementById('export-section').style.display = 'block';
+            
+            // Populate filters
+            populateYearFilter(originalData, dateField);
+            
+            // Generate visualizations
+            analyzeDrugs();
+            updateSummaryStats();
+        }
+        
+        // Parse drug names from cell
+        function parseDrugNames(drugValue) {
+            if (!drugValue || drugValue === null || drugValue === undefined) {
+                return [];
+            }
+            
+            // Convert to string and clean
+            let cleaned = drugValue.toString()
+                .replace(/_x000D_/g, '\n')
+                .replace(/\r/g, '\n')
+                .trim();
+            
+            // Split by newlines and filter out empty values
+            const drugs = cleaned.split('\n')
+                .map(d => d.trim())
+                .filter(d => d && d.length > 0);
+            
+            return drugs;
+        }
+        
+        // Analyze drugs
+        function analyzeDrugs() {
+            const drugFrequency = {};
+            const drugCombinations = {};
+            let totalCases = 0;
+            let totalDrugMentions = 0;
+            let casesWithMultipleDrugs = 0;
+            let maxDrugsPerCase = 0;
+            
+            filteredData.forEach(row => {
+                const drugs = parseDrugNames(row['Drug name as reported by initial reporter']);
+                
+                if (drugs.length > 0) {
+                    totalCases++;
+                    totalDrugMentions += drugs.length;
+                    
+                    if (drugs.length > 1) {
+                        casesWithMultipleDrugs++;
+                        // Record combination
+                        const combination = drugs.sort().join(' + ');
+                        drugCombinations[combination] = (drugCombinations[combination] || 0) + 1;
+                    }
+                    
+                    maxDrugsPerCase = Math.max(maxDrugsPerCase, drugs.length);
+                    
+                    // Count drug frequency
+                    drugs.forEach(drug => {
+                        drugFrequency[drug] = (drugFrequency[drug] || 0) + 1;
+                    });
+                }
+            });
+            
+            // Store analysis data
+            drugAnalysisData = {
+                drugFrequency,
+                drugCombinations,
+                totalCases,
+                totalDrugMentions,
+                casesWithMultipleDrugs,
+                maxDrugsPerCase,
+                uniqueDrugs: Object.keys(drugFrequency).length,
+                avgDrugsPerCase: totalCases > 0 ? (totalDrugMentions / totalCases).toFixed(2) : 0
+            };
+            
+            // Update visualizations
+            updateOverview();
+            updateDetailedView();
+            updateCombinationsView();
+        }
+        
+        // Update overview
+        function updateOverview() {
+            const { drugFrequency, totalCases, totalDrugMentions, uniqueDrugs, avgDrugsPerCase } = drugAnalysisData;
+            
+            // Update info box
+            const infoHtml = `
+                <h4>Analysis Summary</h4>
+                <p>Total cases with drugs: <strong>${totalCases.toLocaleString()}</strong></p>
+                <p>Unique drugs reported: <strong>${uniqueDrugs.toLocaleString()}</strong></p>
+                <p>Total drug mentions: <strong>${totalDrugMentions.toLocaleString()}</strong></p>
+                <p>Average drugs per case: <strong>${avgDrugsPerCase}</strong></p>
+            `;
+            document.getElementById('overview-info').innerHTML = infoHtml;
+            
+            // Sort drugs by frequency
+            const sortedDrugs = Object.entries(drugFrequency)
+                .sort((a, b) => b[1] - a[1]);
+            
+            // Prepare data for charts
+            const topN = 10;
+            const topDrugs = sortedDrugs.slice(0, topN);
+            const otherCount = sortedDrugs.slice(topN).reduce((sum, [_, count]) => sum + count, 0);
+            
+            if (otherCount > 0) {
+                topDrugs.push(['Other drugs', otherCount]);
+            }
+            
+            // Update pie chart
+            updatePieChart(topDrugs);
+            
+            // Update bar chart (top 20)
+            updateBarChart(sortedDrugs.slice(0, 20));
+        }
+        
+        // Update pie chart
+        function updatePieChart(data) {
+            const labels = data.map(d => d[0]);
+            const values = data.map(d => d[1]);
+            const total = analysisMode === 'cases' ? drugAnalysisData.totalCases : drugAnalysisData.totalDrugMentions;
+            
+            const config = {
+                type: 'pie',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        data: values,
+                        backgroundColor: [
+                            '#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0', '#9966FF',
+                            '#FF9F40', '#FF6384', '#C9CBCF', '#4BC0C0', '#36A2EB',
+                            '#95a5a6'  // For "Other drugs"
+                        ]
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        title: {
+                            display: true,
+                            text: `Top ${labels.length - (labels.includes('Other drugs') ? 1 : 0)} Reported Drug Names`,
+                            font: { size: 16 }
+                        },
+                        legend: {
+                            position: 'right',
+                            labels: {
+                                generateLabels: function(chart) {
+                                    const data = chart.data;
+                                    return data.labels.map((label, i) => {
+                                        const value = data.datasets[0].data[i];
+                                        const percentage = ((value / total) * 100).toFixed(1);
+                                        return {
+                                            text: `${label} (${percentage}%)`,
+                                            fillStyle: data.datasets[0].backgroundColor[i],
+                                            hidden: false,
+                                            index: i
+                                        };
+                                    });
+                                }
+                            }
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    const value = context.raw;
+                                    const percentage = ((value / total) * 100).toFixed(1);
+                                    return [
+                                        `${context.label}`,
+                                        `${analysisMode === 'cases' ? 'Cases' : 'Mentions'}: ${value.toLocaleString()}`,
+                                        `Percentage: ${percentage}%`
+                                    ];
+                                }
+                            }
+                        }
+                    }
+                }
+            };
+            
+            if (drugPieChart) {
+                drugPieChart.destroy();
+            }
+            
+            const ctx = document.getElementById('drug-pie-chart').getContext('2d');
+            drugPieChart = new Chart(ctx, config);
+        }
+        
+        // Update bar chart
+        function updateBarChart(data) {
+            const labels = data.map(d => d[0]);
+            const values = data.map(d => d[1]);
+            const total = analysisMode === 'cases' ? drugAnalysisData.totalCases : drugAnalysisData.totalDrugMentions;
+            
+            const config = {
+                type: 'bar',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: analysisMode === 'cases' ? 'Number of Cases' : 'Number of Mentions',
+                        data: values,
+                        backgroundColor: 'rgba(54, 162, 235, 0.8)',
+                        borderColor: 'rgba(54, 162, 235, 1)',
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    indexAxis: 'y',
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        title: {
+                            display: true,
+                            text: 'Top 20 Reported Drug Names',
+                            font: { size: 16 }
+                        },
+                        legend: {
+                            display: false
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    const value = context.raw;
+                                    const percentage = ((value / total) * 100).toFixed(1);
+                                    return [
+                                        `${analysisMode === 'cases' ? 'Cases' : 'Mentions'}: ${value.toLocaleString()}`,
+                                        `Percentage: ${percentage}%`
+                                    ];
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            beginAtZero: true,
+                            title: {
+                                display: true,
+                                text: analysisMode === 'cases' ? 'Number of Cases' : 'Number of Mentions'
+                            }
+                        }
+                    }
+                }
+            };
+            
+            if (drugBarChart) {
+                drugBarChart.destroy();
+            }
+            
+            const ctx = document.getElementById('drug-bar-chart').getContext('2d');
+            drugBarChart = new Chart(ctx, config);
+        }
+        
+        // Update detailed view
+        function updateDetailedView() {
+            const { drugFrequency } = drugAnalysisData;
+            const total = analysisMode === 'cases' ? drugAnalysisData.totalCases : drugAnalysisData.totalDrugMentions;
+            
+            // Sort drugs by frequency
+            const sortedDrugs = Object.entries(drugFrequency)
+                .sort((a, b) => b[1] - a[1]);
+            
+            // Update table
+            const tbody = document.querySelector('#drug-table tbody');
+            tbody.innerHTML = '';
+            
+            sortedDrugs.forEach(([drug, count]) => {
+                const percentage = ((count / total) * 100).toFixed(2);
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td>${drug}</td>
+                    <td style="text-align: right;">${count.toLocaleString()}</td>
+                    <td style="text-align: right;">${percentage}%</td>
+                `;
+                tbody.appendChild(row);
+            });
+            
+            // Update detailed bar chart
+            updateDetailedBarChart(sortedDrugs);
+        }
+        
+        // Update detailed bar chart
+        function updateDetailedBarChart(data) {
+            const labels = data.map(d => d[0]);
+            const values = data.map(d => d[1]);
+            
+            const config = {
+                type: 'bar',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: 'Frequency',
+                        data: values,
+                        backgroundColor: 'rgba(75, 192, 192, 0.8)',
+                        borderColor: 'rgba(75, 192, 192, 1)',
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    indexAxis: 'y',
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        title: {
+                            display: true,
+                            text: 'All Reported Drug Names by Frequency',
+                            font: { size: 16 }
+                        },
+                        legend: {
+                            display: false
+                        }
+                    },
+                    scales: {
+                        x: {
+                            beginAtZero: true,
+                            title: {
+                                display: true,
+                                text: 'Frequency'
+                            }
+                        },
+                        y: {
+                            ticks: {
+                                autoSkip: false
+                            }
+                        }
+                    }
+                }
+            };
+            
+            if (detailedBarChart) {
+                detailedBarChart.destroy();
+            }
+            
+            const ctx = document.getElementById('detailed-bar-chart').getContext('2d');
+            detailedBarChart = new Chart(ctx, config);
+        }
+        
+        // Update combinations view
+        function updateCombinationsView() {
+            const { drugCombinations, casesWithMultipleDrugs, totalCases, maxDrugsPerCase } = drugAnalysisData;
+            
+            // Update summary
+            const polypharmacyRate = totalCases > 0 ? ((casesWithMultipleDrugs / totalCases) * 100).toFixed(1) : 0;
+            const summaryHtml = `
+                Cases with multiple drugs: <strong>${casesWithMultipleDrugs.toLocaleString()}</strong> (${polypharmacyRate}%)<br>
+                Maximum drugs in a single case: <strong>${maxDrugsPerCase}</strong><br>
+                Unique drug combinations: <strong>${Object.keys(drugCombinations).length.toLocaleString()}</strong>
+            `;
+            document.getElementById('combination-summary').innerHTML = summaryHtml;
+            
+            // Sort combinations by frequency
+            const sortedCombinations = Object.entries(drugCombinations)
+                .sort((a, b) => b[1] - a[1])
+                .slice(0, 50); // Top 50 combinations
+            
+            // Display combinations
+            const container = document.getElementById('combinations-container');
+            container.innerHTML = '';
+            
+            sortedCombinations.forEach(([combination, count]) => {
+                const row = document.createElement('div');
+                row.className = 'combination-row';
+                row.innerHTML = `
+                    <div class="combination-drugs">${combination}</div>
+                    <div class="combination-count">${count} cases</div>
+                `;
+                container.appendChild(row);
+            });
+        }
+        
+        // View switching functions
+        function showOverview() {
+            currentView = 'overview';
+            document.getElementById('overview-btn').className = 'btn btn-primary active-view';
+            document.getElementById('detailed-btn').className = 'btn btn-secondary';
+            document.getElementById('combinations-btn').className = 'btn btn-secondary';
+            
+            document.getElementById('overview-section').style.display = 'block';
+            document.getElementById('detailed-section').style.display = 'none';
+            document.getElementById('combinations-section').style.display = 'none';
+        }
+        
+        function showDetailed() {
+            currentView = 'detailed';
+            document.getElementById('overview-btn').className = 'btn btn-secondary';
+            document.getElementById('detailed-btn').className = 'btn btn-primary active-view';
+            document.getElementById('combinations-btn').className = 'btn btn-secondary';
+            
+            document.getElementById('overview-section').style.display = 'none';
+            document.getElementById('detailed-section').style.display = 'block';
+            document.getElementById('combinations-section').style.display = 'none';
+        }
+        
+        function showCombinations() {
+            currentView = 'combinations';
+            document.getElementById('overview-btn').className = 'btn btn-secondary';
+            document.getElementById('detailed-btn').className = 'btn btn-secondary';
+            document.getElementById('combinations-btn').className = 'btn btn-primary active-view';
+            
+            document.getElementById('overview-section').style.display = 'none';
+            document.getElementById('detailed-section').style.display = 'none';
+            document.getElementById('combinations-section').style.display = 'block';
+        }
+        
+        // Change analysis mode
+        function changeAnalysisMode() {
+            analysisMode = document.querySelector('input[name="analysis-mode"]:checked').value;
+            analyzeDrugs();
+        }
+        
+        // Filter drug table
+        function filterDrugTable() {
+            const searchTerm = document.getElementById('drug-search').value.toLowerCase();
+            const rows = document.querySelectorAll('#drug-table tbody tr');
+            
+            rows.forEach(row => {
+                const drugName = row.cells[0].textContent.toLowerCase();
+                row.style.display = drugName.includes(searchTerm) ? '' : 'none';
+            });
+        }
+        
+        // Apply filters
+        function applyFilters() {
+            filteredData = applyDateFilters(originalData, dateField);
+            analyzeDrugs();
+            updateSummaryStats();
+            showSuccess(`Filters applied. Showing ${filteredData.length} records.`);
+        }
+        
+        // Reset filters
+        function resetFilters() {
+            document.getElementById('year-filter').value = '';
+            document.getElementById('date-from').value = '';
+            document.getElementById('date-to').value = '';
+            
+            filteredData = originalData;
+            analyzeDrugs();
+            updateSummaryStats();
+            showSuccess('Filters reset.');
+        }
+        
+        // Update summary statistics
+        function updateSummaryStats() {
+            const statsGrid = document.getElementById('stats-grid');
+            statsGrid.innerHTML = '';
+            
+            addStatCard(statsGrid, 'Total ADR Cases', filteredData.length);
+            addStatCard(statsGrid, 'Cases with Drugs', drugAnalysisData.totalCases);
+            addStatCard(statsGrid, 'Unique Drugs', drugAnalysisData.uniqueDrugs);
+            addStatCard(statsGrid, 'Polypharmacy Cases', drugAnalysisData.casesWithMultipleDrugs);
+        }
+        
+        // Export functions
+        function downloadOverviewCharts() {
+            if (drugPieChart) {
+                downloadChart(drugPieChart, 'reporter_drug_distribution_pie.png');
+            }
+            if (drugBarChart) {
+                setTimeout(() => {
+                    downloadChart(drugBarChart, 'reporter_drug_distribution_bar.png');
+                }, 500);
+            }
+        }
+        
+        function downloadDetailedChart() {
+            if (detailedBarChart) {
+                downloadChart(detailedBarChart, 'all_reporter_drugs_chart.png');
+            }
+        }
+        
+        function exportDrugList() {
+            const { drugFrequency } = drugAnalysisData;
+            const total = analysisMode === 'cases' ? drugAnalysisData.totalCases : drugAnalysisData.totalDrugMentions;
+            
+            let csvContent = 'Drug Name (as reported),Frequency,Percentage\n';
+            
+            Object.entries(drugFrequency)
+                .sort((a, b) => b[1] - a[1])
+                .forEach(([drug, count]) => {
+                    const percentage = ((count / total) * 100).toFixed(2);
+                    csvContent += `"${drug}",${count},${percentage}%\n`;
+                });
+            
+            const blob = new Blob([csvContent], { type: 'text/csv' });
+            const url = window.URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = 'reporter_drug_list.csv';
+            link.click();
+            window.URL.revokeObjectURL(url);
+            showSuccess('Drug list exported successfully!');
+        }
+        
+        function exportCombinations() {
+            const { drugCombinations } = drugAnalysisData;
+            
+            let csvContent = 'Drug Combination,Number of Cases\n';
+            
+            Object.entries(drugCombinations)
+                .sort((a, b) => b[1] - a[1])
+                .forEach(([combination, count]) => {
+                    csvContent += `"${combination}",${count}\n`;
+                });
+            
+            const blob = new Blob([csvContent], { type: 'text/csv' });
+            const url = window.URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = 'reporter_drug_combinations.csv';
+            link.click();
+            window.URL.revokeObjectURL(url);
+            showSuccess('Drug combinations exported successfully!');
+        }
+        
+        function exportAllData() {
+            const { drugFrequency, drugCombinations, totalCases, totalDrugMentions, uniqueDrugs, avgDrugsPerCase, casesWithMultipleDrugs } = drugAnalysisData;
+            
+            let csvContent = 'ADR Reporter Drug Analysis Summary\n\n';
+            csvContent += 'Metric,Value\n';
+            csvContent += `Total ADR Cases,${filteredData.length}\n`;
+            csvContent += `Cases with Drugs,${totalCases}\n`;
+            csvContent += `Total Drug Mentions,${totalDrugMentions}\n`;
+            csvContent += `Unique Drugs,${uniqueDrugs}\n`;
+            csvContent += `Average Drugs per Case,${avgDrugsPerCase}\n`;
+            csvContent += `Cases with Multiple Drugs,${casesWithMultipleDrugs}\n\n`;
+            
+            csvContent += 'Drug Name (as reported),Frequency,Percentage\n';
+            Object.entries(drugFrequency)
+                .sort((a, b) => b[1] - a[1])
+                .forEach(([drug, count]) => {
+                    const percentage = ((count / totalDrugMentions) * 100).toFixed(2);
+                    csvContent += `"${drug}",${count},${percentage}%\n`;
+                });
+            
+            const blob = new Blob([csvContent], { type: 'text/csv' });
+            const url = window.URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = 'reporter_drug_analysis_complete.csv';
+            link.click();
+            window.URL.revokeObjectURL(url);
+            showSuccess('Complete data exported successfully!');
+        }
+        
+        function exportToPDF() {
+            showLoading();
+            
+            const { jsPDF } = window.jspdf;
+            const pdf = new jsPDF();
+            
+            // Add title
+            pdf.setFontSize(20);
+            pdf.text('ADR Drug Analysis Report (Reporter Names)', 20, 20);
+            
+            // Add date
+            pdf.setFontSize(12);
+            pdf.text(`Generated on: ${new Date().toLocaleDateString()}`, 20, 30);
+            
+            // Add summary stats
+            pdf.setFontSize(14);
+            pdf.text('Summary Statistics:', 20, 45);
+            
+            pdf.setFontSize(11);
+            const { totalCases, uniqueDrugs, totalDrugMentions, avgDrugsPerCase, casesWithMultipleDrugs } = drugAnalysisData;
+            pdf.text(`Total ADR Cases: ${filteredData.length}`, 30, 55);
+            pdf.text(`Cases with Drugs: ${totalCases}`, 30, 65);
+            pdf.text(`Unique Drugs Reported: ${uniqueDrugs}`, 30, 75);
+            pdf.text(`Total Drug Mentions: ${totalDrugMentions}`, 30, 85);
+            pdf.text(`Average Drugs per Case: ${avgDrugsPerCase}`, 30, 95);
+            pdf.text(`Cases with Multiple Drugs: ${casesWithMultipleDrugs}`, 30, 105);
+            
+            // Add note about reporter names
+            pdf.setFontSize(10);
+            pdf.setTextColor(100);
+            pdf.text('Note: This analysis shows drug names as originally reported by the initial reporter.', 30, 120);
+            pdf.setTextColor(0);
+            
+            // Add chart
+            if (currentView === 'overview' && drugPieChart) {
+                const chartImage = drugPieChart.toBase64Image();
+                pdf.addImage(chartImage, 'PNG', 20, 130, 170, 120);
+            }
+            
+            // Save PDF
+            pdf.save('adr_reporter_drug_analysis.pdf');
+            
+            hideLoading();
+            showSuccess('PDF exported successfully!');
+        }
+    </script>
+</body>
+</html>

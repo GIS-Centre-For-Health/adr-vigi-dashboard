@@ -1,0 +1,507 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ADR Reporter State/Province Visualization - VigiFlow</title>
+    
+    <!-- External CSS -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <link rel="stylesheet" href="../assets/css/common.css">
+    
+    <!-- Custom CSS for this visualization -->
+    <style>
+        .data-quality-warning {
+            background-color: #fff3cd;
+            border: 1px solid #ffeaa7;
+            color: #856404;
+            padding: 12px 20px;
+            margin: 20px 0;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-weight: 500;
+        }
+        
+        .data-quality-warning i {
+            font-size: 20px;
+            color: #f39c12;
+        }
+        
+        .dual-chart-container {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 30px;
+            margin-top: 30px;
+        }
+        
+        .chart-wrapper {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        
+        .chart-wrapper h3 {
+            margin: 0 0 20px 0;
+            color: #333;
+            font-size: 18px;
+            text-align: center;
+        }
+        
+        @media (max-width: 968px) {
+            .dual-chart-container {
+                grid-template-columns: 1fr;
+            }
+        }
+        
+        .data-note {
+            background-color: #e3f2fd;
+            border-left: 4px solid #2196F3;
+            padding: 10px 15px;
+            margin: 15px 0;
+            font-size: 14px;
+            color: #1565C0;
+        }
+        
+        .placeholder-warning {
+            background-color: #fce4ec;
+            border-left: 4px solid #e91e63;
+            padding: 10px 15px;
+            margin: 10px 0;
+            font-size: 14px;
+            color: #880e4f;
+        }
+    </style>
+</head>
+<body>
+    <!-- Header -->
+    <header class="header">
+        <div class="header-content">
+            <div>
+                <h1><i class="fas fa-map"></i> ADR Reporter State/Province Analysis</h1>
+                <p>Analysis of Adverse Drug Reaction reports by reporter's state or province location</p>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Container -->
+    <div class="container">
+        <!-- Upload Section -->
+        <section class="upload-section" id="upload-section">
+            <h2><i class="fas fa-file-excel"></i> Upload VigiFlow Excel File</h2>
+            <div class="upload-area" id="upload-area">
+                <input type="file" id="file-input" accept=".xlsx,.xls" hidden>
+                <i class="fas fa-cloud-upload-alt upload-icon"></i>
+                <p class="upload-text">Drag and drop your Excel file here or click to browse</p>
+                <p class="upload-subtext">Supported formats: .xlsx, .xls</p>
+            </div>
+        </section>
+
+        <!-- Summary Section (Hidden by default) -->
+        <section class="summary-section" id="summary-section" style="display: none;">
+            <h2><i class="fas fa-chart-pie"></i> Summary Statistics</h2>
+            <div class="stats-grid" id="stats-container">
+                <!-- Stats will be added dynamically -->
+            </div>
+        </section>
+
+        <!-- Data Quality Warning (Hidden by default) -->
+        <div class="data-quality-warning" id="data-warning" style="display: none;">
+            <i class="fas fa-exclamation-triangle"></i>
+            <span id="warning-text"></span>
+        </div>
+
+        <!-- Placeholder Warning (Hidden by default) -->
+        <div class="placeholder-warning" id="placeholder-warning" style="display: none;">
+            <i class="fas fa-info-circle"></i>
+            <span id="placeholder-text"></span>
+        </div>
+
+        <!-- Visualization Section (Hidden by default) -->
+        <section class="visualization-section" id="visualization-section" style="display: none;">
+            <h2><i class="fas fa-chart-bar"></i> State/Province Distribution Analysis</h2>
+            
+            <div class="chart-controls">
+                <button class="btn btn-secondary" id="toggle-percentage">
+                    <i class="fas fa-percent"></i> Show Percentage
+                </button>
+                <button class="btn btn-secondary" id="download-chart">
+                    <i class="fas fa-download"></i> Download Chart
+                </button>
+                <button class="btn btn-secondary" id="download-csv">
+                    <i class="fas fa-file-csv"></i> Export CSV
+                </button>
+            </div>
+
+            <div class="dual-chart-container">
+                <!-- Data Availability Chart -->
+                <div class="chart-wrapper">
+                    <h3>Data Availability</h3>
+                    <div class="chart-container">
+                        <canvas id="availability-chart"></canvas>
+                    </div>
+                </div>
+                
+                <!-- State/Province Distribution Chart -->
+                <div class="chart-wrapper">
+                    <h3>State/Province Distribution (Available Data Only)</h3>
+                    <div class="chart-container">
+                        <canvas id="state-chart"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <div class="data-note">
+                <i class="fas fa-info-circle"></i> 
+                <strong>Note:</strong> State/Province data may contain formatting issues (e.g., "_x000D_" characters) which have been cleaned for display. 
+                Placeholder text like "Reporter's State or Province" and empty entries have been excluded from the analysis.
+            </div>
+
+            <!-- Data Table -->
+            <div class="table-container" style="margin-top: 30px;">
+                <h3><i class="fas fa-table"></i> State/Province Data Table</h3>
+                <table class="data-table" id="data-table">
+                    <thead>
+                        <tr>
+                            <th>State/Province</th>
+                            <th>Count</th>
+                            <th>Percentage of Total</th>
+                            <th>Percentage of Available</th>
+                        </tr>
+                    </thead>
+                    <tbody id="table-body">
+                        <!-- Table rows will be added dynamically -->
+                    </tbody>
+                </table>
+            </div>
+        </section>
+    </div>
+
+    <!-- Loading Spinner -->
+    <div class="loading" id="loading" style="display: none;">
+        <div class="spinner"></div>
+        <p>Processing data...</p>
+    </div>
+
+    <!-- Scripts -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.17.0/xlsx.full.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"></script>
+    <script src="../assets/js/common.js"></script>
+    
+    <script>
+        // Global variables
+        let stateData = [];
+        let availabilityChart = null;
+        let stateChart = null;
+        let totalCases = 0;
+        let showPercentage = false;
+        let placeholderCount = 0;
+
+        // Clean state/province data by removing carriage return characters and filtering placeholders
+        function cleanStateName(state) {
+            if (!state || state === null || state === undefined) return null;
+            
+            // Convert to string and trim
+            let cleaned = String(state).trim();
+            
+            // Remove carriage return characters
+            cleaned = cleaned.replace(/_x000D_/g, '').replace(/\r/g, '').replace(/\n/g, ' ');
+            
+            // Remove multiple spaces
+            cleaned = cleaned.replace(/\s+/g, ' ').trim();
+            
+            // Filter out empty or invalid values
+            if (cleaned === '' || cleaned.toLowerCase() === 'null' || cleaned.toLowerCase() === 'undefined') {
+                return null;
+            }
+            
+            // Check for placeholder text
+            if (cleaned.toLowerCase() === "reporter's state or province" || 
+                cleaned.toLowerCase() === "state or province") {
+                return 'PLACEHOLDER';
+            }
+            
+            return cleaned;
+        }
+
+        // Process Excel data
+        function processExcelData(data) {
+            console.log('Processing Excel data...');
+            showLoading();
+            
+            // Reset data
+            stateData = [];
+            totalCases = 0;
+            placeholderCount = 0;
+            
+            // Find the Reports sheet
+            const sheetName = 'Reports';
+            if (!data[sheetName]) {
+                showError('Reports sheet not found in the Excel file');
+                return;
+            }
+            
+            const reports = data[sheetName];
+            totalCases = reports.length;
+            
+            // Count states/provinces
+            const stateCounts = {};
+            let casesWithState = 0;
+            let casesWithoutState = 0;
+            
+            reports.forEach(row => {
+                const rawState = row['State or province'];
+                const cleanedState = cleanStateName(rawState);
+                
+                if (cleanedState === 'PLACEHOLDER') {
+                    placeholderCount++;
+                    casesWithoutState++;
+                } else if (cleanedState) {
+                    casesWithState++;
+                    stateCounts[cleanedState] = (stateCounts[cleanedState] || 0) + 1;
+                } else {
+                    casesWithoutState++;
+                }
+            });
+            
+            // Convert to array and sort
+            stateData = Object.entries(stateCounts)
+                .map(([state, count]) => ({
+                    state: state,
+                    count: count,
+                    percentageOfTotal: (count / totalCases) * 100,
+                    percentageOfAvailable: (count / casesWithState) * 100
+                }))
+                .sort((a, b) => b.count - a.count);
+            
+            // Calculate statistics
+            const missingPercentage = (casesWithoutState / totalCases) * 100;
+            const uniqueStates = stateData.length;
+            
+            // Show data quality warning
+            const warningElement = document.getElementById('data-warning');
+            const warningText = document.getElementById('warning-text');
+            warningText.textContent = `Warning: ${missingPercentage.toFixed(1)}% of records (${casesWithoutState} out of ${totalCases}) do not have valid state/province data. The analysis below is based on the ${casesWithState} records with available state/province information.`;
+            warningElement.style.display = 'flex';
+            
+            // Show placeholder warning if applicable
+            if (placeholderCount > 0) {
+                const placeholderWarning = document.getElementById('placeholder-warning');
+                const placeholderText = document.getElementById('placeholder-text');
+                placeholderText.textContent = `Note: ${placeholderCount} records contained placeholder text "Reporter's State or Province" which has been excluded from the analysis as invalid data.`;
+                placeholderWarning.style.display = 'block';
+            }
+            
+            // Update summary statistics
+            updateSummaryStats(totalCases, casesWithState, casesWithoutState, uniqueStates);
+            
+            // Create visualizations
+            createAvailabilityChart(casesWithState, casesWithoutState);
+            createStateChart();
+            updateDataTable();
+            
+            // Show sections
+            showSections(['summary-section', 'visualization-section']);
+            hideLoading();
+            showSuccess('Data processed successfully!');
+        }
+
+        // Update summary statistics
+        function updateSummaryStats(total, withState, withoutState, unique) {
+            const statsContainer = document.getElementById('stats-container');
+            statsContainer.innerHTML = '';
+            
+            const stats = [
+                { label: 'Total Cases', value: total, icon: 'fas fa-database', color: '#3498db' },
+                { label: 'Cases with State/Province', value: withState, icon: 'fas fa-check-circle', color: '#27ae60' },
+                { label: 'Missing State/Province', value: withoutState, icon: 'fas fa-exclamation-circle', color: '#e74c3c' },
+                { label: 'Unique States/Provinces', value: unique, icon: 'fas fa-globe-americas', color: '#9b59b6' }
+            ];
+            
+            stats.forEach(stat => {
+                statsContainer.appendChild(createStatCard(stat.label, stat.value, stat.icon, stat.color));
+            });
+        }
+
+        // Create stat card
+        function createStatCard(label, value, icon, color) {
+            const card = document.createElement('div');
+            card.className = 'stat-card';
+            card.innerHTML = `
+                <div class="stat-icon" style="color: ${color}">
+                    <i class="${icon}"></i>
+                </div>
+                <div class="stat-content">
+                    <div class="stat-value">${value.toLocaleString()}</div>
+                    <div class="stat-label">${label}</div>
+                </div>
+            `;
+            return card;
+        }
+
+        // Create data availability chart
+        function createAvailabilityChart(withData, withoutData) {
+            const ctx = document.getElementById('availability-chart').getContext('2d');
+            
+            if (availabilityChart) {
+                availabilityChart.destroy();
+            }
+            
+            const data = {
+                labels: ['With State/Province Data', 'Without State/Province Data'],
+                datasets: [{
+                    data: [withData, withoutData],
+                    backgroundColor: ['#27ae60', '#e74c3c'],
+                    borderWidth: 2,
+                    borderColor: '#fff'
+                }]
+            };
+            
+            availabilityChart = new Chart(ctx, {
+                type: 'doughnut',
+                data: data,
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'bottom',
+                            labels: {
+                                padding: 15,
+                                font: { size: 12 }
+                            }
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    const label = context.label || '';
+                                    const value = context.parsed;
+                                    const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                                    const percentage = ((value / total) * 100).toFixed(1);
+                                    return `${label}: ${value} (${percentage}%)`;
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        // Create state/province distribution chart
+        function createStateChart() {
+            const ctx = document.getElementById('state-chart').getContext('2d');
+            
+            if (stateChart) {
+                stateChart.destroy();
+            }
+            
+            // Limit to top 20 states/provinces for better visibility
+            const chartData = stateData.slice(0, 20);
+            
+            const data = {
+                labels: chartData.map(d => d.state),
+                datasets: [{
+                    label: 'Number of Cases',
+                    data: chartData.map(d => showPercentage ? d.percentageOfAvailable : d.count),
+                    backgroundColor: '#9b59b6',
+                    borderColor: '#8e44ad',
+                    borderWidth: 1
+                }]
+            };
+            
+            stateChart = new Chart(ctx, {
+                type: 'bar',
+                data: data,
+                options: {
+                    indexAxis: 'y',
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    const item = chartData[context.dataIndex];
+                                    if (showPercentage) {
+                                        return `${item.percentageOfAvailable.toFixed(1)}% of available data (${item.count} cases)`;
+                                    }
+                                    return `${item.count} cases (${item.percentageOfAvailable.toFixed(1)}% of available)`;
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            beginAtZero: true,
+                            title: {
+                                display: true,
+                                text: showPercentage ? 'Percentage of Available Data (%)' : 'Number of Cases'
+                            }
+                        },
+                        y: {
+                            ticks: {
+                                autoSkip: false
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        // Update data table
+        function updateDataTable() {
+            const tableBody = document.getElementById('table-body');
+            tableBody.innerHTML = '';
+            
+            stateData.forEach(item => {
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td>${item.state}</td>
+                    <td>${item.count}</td>
+                    <td>${item.percentageOfTotal.toFixed(1)}%</td>
+                    <td>${item.percentageOfAvailable.toFixed(1)}%</td>
+                `;
+                tableBody.appendChild(row);
+            });
+        }
+
+        // Toggle percentage view
+        document.getElementById('toggle-percentage').addEventListener('click', function() {
+            showPercentage = !showPercentage;
+            this.innerHTML = showPercentage ? 
+                '<i class="fas fa-hashtag"></i> Show Count' : 
+                '<i class="fas fa-percent"></i> Show Percentage';
+            createStateChart();
+        });
+
+        // Download CSV
+        document.getElementById('download-csv').addEventListener('click', function() {
+            let csv = 'State/Province,Count,Percentage of Total,Percentage of Available\n';
+            
+            stateData.forEach(item => {
+                csv += `"${item.state}",${item.count},${item.percentageOfTotal.toFixed(1)}%,${item.percentageOfAvailable.toFixed(1)}%\n`;
+            });
+            
+            const blob = new Blob([csv], { type: 'text/csv' });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'adr_reporter_states_provinces.csv';
+            a.click();
+            window.URL.revokeObjectURL(url);
+            
+            showSuccess('CSV file downloaded successfully!');
+        });
+
+        // Download chart
+        document.getElementById('download-chart').addEventListener('click', function() {
+            downloadChart('state-chart', 'adr_reporter_states_provinces');
+        });
+
+        // Initialize file upload
+        setupFileUpload(processExcelData);
+    </script>
+</body>
+</html>
